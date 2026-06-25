@@ -20,6 +20,8 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
   Contexto (actores + PFIF/ICRC, telecom, SAIME Fase 2) y de Contenedores (web, chatbot, back
   office, API, motor de matching, cola offline-first, almacenes), con trust boundaries y
   superficies sensibles marcadas. Avanza Gate 1.
+- **README.md** del proyecto: resumen, arquitectura, privacidad/seguridad, estructura de
+  documentación AI-DLC y estado por fase.
 
 ### Changed
 
