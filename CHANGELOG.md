@@ -12,6 +12,12 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
 
 ### Added
 
+- **`apps/matching-worker` esqueletado (test-first, fase 03)**: Clean Architecture/DDD con dominio
+  puro implementado y **23 tests en verde** — `drift` (bandas + invariante de no auto-confirmación),
+  `fusion` (pesos dinámicos), `quality` y `tracking` (umbral de re-id estricto), más
+  `MatchingService` con fakes. Adaptadores (OpenCV YuNet+SFace, pgvector, FAISS HNSW, AMQP) en
+  esqueleto. Parámetros en `config.py` (τ0, M=32, efSearch=32…) para calibrar en fase 04.
+
 - **PRD del flujo central** (`docs/01-requirements/flujo-central.md`): reporte → match →
   confirmación → notificación. Incluye escenarios positivos (EP-01…EP-04), escenarios
   negativos/de abuso (AB-01…AB-11), requisitos funcionales (RF-01…RF-13) y requisitos de

@@ -94,7 +94,8 @@ docs/
 | 00 · Project | — | ✅ Charter, glosario, clasificación de datos |
 | 01 · Requirements | Gate 0 | ✅ PRD del flujo central con escenarios de abuso y OWASP |
 | 02 · Design | Gate 1 | ✅ C4, threat model STRIDE/DREAD, ADR-0001…0003 y esqueleto de API (deuda documentada) |
-| 03-06 | Gates 2-5 | ⬜ Pendiente (estructura creada) |
+| 03 · Implementation | Gate 2 | 🚧 `apps/matching-worker` esqueletado test-first (dominio + 23 tests en verde; adaptadores pendientes) |
+| 04-06 | Gates 3-5 | ⬜ Pendiente (estructura creada) |
 
 Los cambios se registran en [CHANGELOG.md](CHANGELOG.md) (formato Keep a Changelog 1.1.0 +
 Versionado Semántico). Versión actual: **0.1.0**.

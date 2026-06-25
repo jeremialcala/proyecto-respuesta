@@ -1,0 +1,26 @@
+[project]
+name = "matching-worker"
+version = "0.1.0"
+description = "Motor de matching de Respuesta — pipeline facial (OpenCV YuNet+SFace), pgvector + FAISS, drift de edad y fusión multi-señal."
+requires-python = ">=3.10"
+
+# Dependencias de runtime (los adaptadores las usan; el dominio puro NO depende de ellas).
+dependencies = [
+    "numpy>=1.26",
+    "opencv-python>=4.9",      # YuNet (FaceDetectorYN) + SFace (FaceRecognizerSF)
+    "faiss-cpu>=1.8",          # IndexIDMap2(IndexHNSWFlat, M=32)
+    "psycopg[binary]>=3.1",    # pgvector (fuente de verdad)
+    "pgvector>=0.2",
+    "pika>=1.3",               # AMQP (cola+worker)
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.4"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
