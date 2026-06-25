@@ -75,7 +75,9 @@ docs/
 ├── 02-design/
 │   ├── architecture.md         Clean/DDD, contextos acotados, patrones de seguridad
 │   ├── threat-model.md         STRIDE por componente + amenazas DREAD priorizadas (T1…T12)
-│   └── api-contracts.md        Endpoints REST + eventos AMQP (esqueleto)
+│   ├── api-contracts.md        Resumen de endpoints REST + eventos AMQP
+│   ├── openapi.yaml            OpenAPI 3.1 (REST)
+│   └── asyncapi.yaml           AsyncAPI 2.6 (eventos AMQP)
 ├── 03-implementation/          Fase 03 (Gate 2) — pendiente
 ├── 04-testing/                 Fase 04 (Gate 3) — pendiente
 ├── 05-deployment/              Fase 05 (Gate 4) — pendiente

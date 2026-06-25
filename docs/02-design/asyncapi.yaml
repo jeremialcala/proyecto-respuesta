@@ -1,0 +1,125 @@
+asyncapi: '2.6.0'
+info:
+  title: Respuesta — Eventos
+  version: 0.1.0
+  description: >-
+    Eventos asíncronos (patrón cola + worker, AMQP) del flujo central. La cola absorbe picos sin
+    perder mensajes (offline-first, ADR-0001). El motor de matching consume `report.ingested` y
+    publica `candidate.generated`. Las transiciones de estado se auditan (RS-06).
+
+servers:
+  broker:
+    url: amqp://broker.respuesta.internal:5672
+    protocol: amqp
+    description: Broker AMQP (hosting Modelo A — ADR-0003)
+
+defaultContentType: application/json
+
+channels:
+  report.received:
+    description: Reporte capturado y encolado (offline-first).
+    publish:
+      operationId: onReportReceived
+      message: { $ref: '#/components/messages/ReportReceived' }
+  report.ingested:
+    description: Adjuntos en el almacén protegido; listo para resolver.
+    subscribe:
+      operationId: consumeReportIngested
+      message: { $ref: '#/components/messages/ReportIngested' }
+  candidate.generated:
+    description: Candidato con confianza; el back office lo enruta por umbral.
+    publish:
+      operationId: onCandidateGenerated
+      message: { $ref: '#/components/messages/CandidateGenerated' }
+  match.confirmed:
+    description: Match confirmado (coordinador ≥65 % o autoreporte 100 %).
+    publish:
+      operationId: onMatchConfirmed
+      message: { $ref: '#/components/messages/MatchConfirmed' }
+  state.changed:
+    description: Transición de estado (auditada).
+    publish:
+      operationId: onStateChanged
+      message: { $ref: '#/components/messages/StateChanged' }
+  notification.sent:
+    description: Notificación entregada al clúster opt-in.
+    publish:
+      operationId: onNotificationSent
+      message: { $ref: '#/components/messages/NotificationSent' }
+
+components:
+  messages:
+    ReportReceived:
+      name: ReportReceived
+      payload: { $ref: '#/components/schemas/ReportRef' }
+    ReportIngested:
+      name: ReportIngested
+      payload: { $ref: '#/components/schemas/ReportIngested' }
+    CandidateGenerated:
+      name: CandidateGenerated
+      payload: { $ref: '#/components/schemas/Candidate' }
+    MatchConfirmed:
+      name: MatchConfirmed
+      payload: { $ref: '#/components/schemas/MatchConfirmed' }
+    StateChanged:
+      name: StateChanged
+      payload: { $ref: '#/components/schemas/StateChanged' }
+    NotificationSent:
+      name: NotificationSent
+      payload: { $ref: '#/components/schemas/NotificationSent' }
+
+  schemas:
+    PersonState:
+      type: string
+      enum: [desaparecido, a_salvo, localizado_estable, localizado_critico, fallecido, no_identificado]
+    Routing:
+      type: string
+      enum: [discard, coordinator, fuse]
+    ReportRef:
+      type: object
+      required: [report_id, intention]
+      properties:
+        report_id: { type: string, format: uuid }
+        intention: { type: string, enum: [desaparecido, encontrado, autoreporte] }
+        received_at: { type: string, format: date-time }
+    ReportIngested:
+      type: object
+      required: [report_id, entity_id]
+      properties:
+        report_id: { type: string, format: uuid }
+        entity_id: { type: string, format: uuid }
+        media_ref: { type: string, description: Referencia en el almacén protegido. }
+    Candidate:
+      type: object
+      description: Salida del motor de matching (ADR-0004).
+      required: [entity_id, face_distance, band, routing]
+      properties:
+        entity_id: { type: string, format: uuid }
+        face_distance: { type: number, minimum: 0, maximum: 1 }
+        band: { type: string, enum: [strong, drift_tolerated, discard] }
+        routing: { $ref: '#/components/schemas/Routing' }
+        fused_score: { type: number, minimum: 0, maximum: 1 }
+    MatchConfirmed:
+      type: object
+      required: [entity_id, confirmed_by]
+      properties:
+        entity_id: { type: string, format: uuid }
+        confirmed_by: { type: string, description: coordinador | autoreporte }
+        confirmed_at: { type: string, format: date-time }
+    StateChanged:
+      type: object
+      required: [entity_id, to_state, mechanism, actor, at]
+      properties:
+        entity_id: { type: string, format: uuid }
+        to_state: { $ref: '#/components/schemas/PersonState' }
+        mechanism: { type: string, enum: [autorreporte, rescatista, coordinador, autoridad] }
+        actor: { type: string }
+        at: { type: string, format: date-time }
+    NotificationSent:
+      type: object
+      required: [entity_id, channel]
+      properties:
+        entity_id: { type: string, format: uuid }
+        channel: { type: string, enum: [whatsapp, instagram, messenger, telegram, web] }
+        opt_in: { type: boolean }
+        sent_at: { type: string, format: date-time }

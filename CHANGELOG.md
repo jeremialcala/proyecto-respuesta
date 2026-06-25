@@ -12,6 +12,9 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
 
 ### Added
 
+- **Contratos formales 02-design**: `openapi.yaml` (OpenAPI 3.1 — 11 endpoints, 15 esquemas,
+  seguridad bearer/JWT, errores RFC 7807, rate limit) y `asyncapi.yaml` (AsyncAPI 2.6 — 6 canales
+  AMQP, payload del candidato alineado a ADR-0004). YAML validado; resuelve los TODO de `api-contracts.md`.
 - **`apps/matching-worker` esqueletado (test-first, fase 03)**: Clean Architecture/DDD con dominio
   puro implementado y **23 tests en verde** — `drift` (bandas + invariante de no auto-confirmación),
   `fusion` (pesos dinámicos), `quality` y `tracking` (umbral de re-id estricto), más

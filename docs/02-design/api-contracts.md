@@ -1,7 +1,8 @@
 # Contratos de API — Respuesta (esqueleto)
 
 - **Fase AI-DLC:** 02-design
-- **Estado:** draft (detalle OpenAPI/AsyncAPI pendiente)
+- **Estado:** draft
+- **Especificaciones:** [`openapi.yaml`](openapi.yaml) (REST, OpenAPI 3.1) · [`asyncapi.yaml`](asyncapi.yaml) (eventos AMQP, AsyncAPI 2.6)
 
 Toda la API exige autenticación (RS-01) y autorización por rol + scoping por clúster (RS-02). Las
 entradas se validan por esquema (RS-04). Las transiciones de estado quedan auditadas (RS-06).
@@ -38,8 +39,14 @@ entradas se validan por esquema (RS-04). Las transiciones de estado quedan audit
 | `state.changed` | API → Notificación + Auditoría | Transición de estado (auditada) |
 | `notification.sent` | Notificación → Canal | Notificación entregada al clúster opt-in |
 
+## Especificaciones formales
+
+- **REST:** [`openapi.yaml`](openapi.yaml) — OpenAPI 3.1, 11 endpoints, 15 esquemas, seguridad
+  bearer/JWT (RS-01), errores RFC 7807 (RS-04), rate limit 429 (RS-05).
+- **Eventos:** [`asyncapi.yaml`](asyncapi.yaml) — AsyncAPI 2.6, 6 canales AMQP (`report.received` …
+  `notification.sent`), payload del candidato alineado al motor (ADR-0004).
+
 ## Pendiente
 
-- `<TODO>` Especificación OpenAPI 3.1 de los endpoints REST.
-- `<TODO>` Especificación AsyncAPI de los eventos.
-- `<TODO>` Esquemas de request/response y códigos de error (alineados a RS-04, RS-14).
+- `<TODO>` Linting de specs en CI (Spectral/openapi-spec-validator) — fase 05-deployment.
+- `<TODO>` Versionado y publicación del contrato (consumer-driven) en fase 04-testing.
