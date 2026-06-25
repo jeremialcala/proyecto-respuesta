@@ -31,6 +31,16 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
   capa anti prompt-injection (input/output/topical rails) sobre el LLM on-prem, como defensa en
   profundidad; heurísticos-primero por costo. Componente de rieles añadido al C4 del chatbot y
   trazado en RS-13.
+- **ADR-0003 — Hosting Modelo A** (`docs/00-project/adr/0003-hosting-modelo-a.md`): formaliza el
+  responsable humanitario internacional + hosting UE/grado GDPR, con alternativas B/C/D y la
+  reconciliación con el LLM on-premises (infra bajo nuestro control en la jurisdicción del Modelo A).
+- **Threat model STRIDE/DREAD** (`docs/02-design/threat-model.md`): STRIDE por componente + 12
+  amenazas priorizadas con DREAD (T1…T12) trazadas a controles RS-xx y ADRs.
+- **Diseño 02-design**: `architecture.md` (Clean/DDD, contextos acotados, patrones de seguridad) y
+  `api-contracts.md` (endpoints REST + eventos AMQP, esqueleto).
+- **Estructura AI-DLC completa**: `.ai-dlc/gates/` (Gate 0 y Gate 1 con estado), `.ai-dlc/templates/`
+  (prd, threat-model, adr), placeholders de fases `03-06` y `apps/` (servicios ejecutables).
+- **Gate 1 SUPERADO** (con deuda documentada): C4 + threat model + ADRs + contratos de API.
 
 ### Changed
 

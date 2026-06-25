@@ -214,7 +214,8 @@ de reconstrucción, **+ 12 meses***. Se gestiona en la plataforma con fecha y ev
 internacional como responsable —entidad domiciliada en jurisdicción con protección fuerte— con
 hosting en nube UE / región con adecuación GDPR. El gobierno no custodia datos sensibles; solo se
 le integra para acreditar rescatistas. ICRC (Modelo D) queda como alianza a explorar en paralelo.
-Detalle y alternativas descartadas en `data-classification.md`.
+Detalle, alternativas descartadas y consecuencias en `data-classification.md` y
+[ADR-0003](adr/0003-hosting-modelo-a.md).
 
 ## Arquitectura de despliegue (componentes)
 

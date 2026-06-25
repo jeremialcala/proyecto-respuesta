@@ -76,6 +76,9 @@ en un registro auditable. El borrado se ejecuta automáticamente al cumplirse el
 
 ## Responsable del tratamiento y jurisdicción — **Decisión: Modelo A**
 
+> Formalizado en [ADR-0003](adr/0003-hosting-modelo-a.md).
+
+
 **Adoptado:** operador humanitario internacional como responsable del tratamiento —entidad del
 proyecto domiciliada en una jurisdicción con protección de datos fuerte— con **hosting en nube de
 la UE (o región con adecuación GDPR)**. Razón: máxima protección legal y autonomía operativa,

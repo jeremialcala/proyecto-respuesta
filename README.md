@@ -55,16 +55,29 @@ El proyecto sigue **AI-DLC** (seguridad por diseño, test-first, human-in-the-lo
 documentos:
 
 ```
+.ai-dlc/
+├── gates/                      Checklists Gate 0 (✅) y Gate 1 (✅ con deuda)
+└── templates/                  Plantillas reutilizables: prd, threat-model, adr
+apps/                           Servicios ejecutables (api, chatbot, matching-worker, llm) — scaffolding
 docs/
 ├── 00-project/
 │   ├── charter.md              Visión, alcance, estados, restricciones, riesgos
 │   ├── glossary.md             Lenguaje ubicuo (DDD) y contextos acotados
 │   ├── data-classification.md  Inventario de datos sensibles y retención (GDPR)
 │   └── adr/
-│       ├── 0001-llm-on-premises.md                 ADR: Ollama + worker vs. proveedor gestionado
-│       └── 0002-nemo-guardrails-prompt-injection.md ADR: NeMo Guardrails anti prompt-injection
+│       ├── 0001-llm-on-premises.md                  ADR: Ollama + worker vs. proveedor gestionado
+│       ├── 0002-nemo-guardrails-prompt-injection.md ADR: NeMo Guardrails anti prompt-injection
+│       └── 0003-hosting-modelo-a.md                 ADR: responsable internacional + hosting UE
 ├── 01-requirements/
 │   └── flujo-central.md        PRD: reporte→match→confirmación→notificación (Gate 0)
+├── 02-design/
+│   ├── architecture.md         Clean/DDD, contextos acotados, patrones de seguridad
+│   ├── threat-model.md         STRIDE por componente + amenazas DREAD priorizadas (T1…T12)
+│   └── api-contracts.md        Endpoints REST + eventos AMQP (esqueleto)
+├── 03-implementation/          Fase 03 (Gate 2) — pendiente
+├── 04-testing/                 Fase 04 (Gate 3) — pendiente
+├── 05-deployment/              Fase 05 (Gate 4) — pendiente
+├── 06-monitoring/              Fase 06 (Gate 5) — pendiente
 └── architecture/
     ├── c4-context.md            Diagrama C4 de Contexto
     ├── c4-container.md          Diagrama C4 de Contenedores
@@ -77,7 +90,8 @@ docs/
 | :---- | :---- | :---- |
 | 00 · Project | — | ✅ Charter, glosario, clasificación de datos |
 | 01 · Requirements | Gate 0 | ✅ PRD del flujo central con escenarios de abuso y OWASP |
-| 02 · Design | Gate 1 | 🚧 C4 listo; faltan threat model STRIDE/DREAD, ADRs y contratos de API |
+| 02 · Design | Gate 1 | ✅ C4, threat model STRIDE/DREAD, ADR-0001…0003 y esqueleto de API (deuda documentada) |
+| 03-06 | Gates 2-5 | ⬜ Pendiente (estructura creada) |
 
 Los cambios se registran en [CHANGELOG.md](CHANGELOG.md) (formato Keep a Changelog 1.1.0 +
 Versionado Semántico). Versión actual: **0.1.0**.
