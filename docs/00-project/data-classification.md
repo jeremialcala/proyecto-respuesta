@@ -23,7 +23,7 @@ su jurisdicción.
 | :---- | :---- | :---- | :---- | :---- | :---- |
 | **Foto de referencia del desaparecido** | Restringido | GDPR Art. 9 (biométrico) | En reposo y tránsito | Hasta cierre de emergencia | Aportada por el buscador; base del face-match. |
 | **Foto/captura del rescatado** | Restringido | GDPR Art. 9 (biométrico) | En reposo y tránsito | Hasta cierre de emergencia | Tomada en terreno; mala calidad esperable. |
-| **Video Proof-of-life (~30 s)** | Restringido | GDPR Art. 9 (biométrico + voz) | En reposo y tránsito | Hasta cierre de emergencia | Revela rostro, voz y ubicación; control de reenvío, sin difusión pública. |
+| **Video Proof-of-life (~30 s)** | Restringido | GDPR Art. 9 (biométrico + voz) | En reposo y tránsito | Hasta cierre de emergencia | Revela rostro, voz y ubicación; se entrega como **link asegurado por login**, no como video en chat; control de reenvío, sin difusión pública. |
 | **Plantilla/embedding biométrico facial** | Restringido | GDPR Art. 9 (biométrico) | En reposo y tránsito | Borrar con la foto origen | Derivado; tratar con el mismo rigor que la imagen. |
 | **Datos de menores (cualquier categoría)** | Restringido | GDPR Art. 8 + Art. 9 | En reposo y tránsito | Mínimo imprescindible | Face-match menos fiable en niños; nunca única base de decisión. |
 | **Ubicación última conocida / de hallazgo** | Restringido | GDPR (dato personal sensible por contexto) | En reposo y tránsito | Hasta cierre de emergencia | En el contexto venezolano puede habilitar vigilancia/persecución. |
@@ -32,6 +32,8 @@ su jurisdicción.
 | **Datos de contacto del buscador** | Confidencial | GDPR Art. 6 (PII) | En reposo | Hasta cierre de emergencia | Solo se comparte con el clúster vía opt-in revocable. |
 | **Declaración de filiación (honor-based, Fase 1)** | Confidencial | GDPR Art. 6 | En reposo | Hasta cierre de emergencia | Filiación auto-declarada (Facebook descartado); registro auditable; verificación débil. |
 | **Verificación biométrica SAIME (Fase 2)** | Restringido | GDPR Art. 9 (biométrico) + habeas data | En reposo y tránsito | No persistir resultado más de lo necesario | Verificación exacta contra biometría estatal; **riesgo de privacidad muy alto**; diseñar con mínima divulgación (que el Estado no registre quién consulta por quién). |
+| **Mensajes vía redes de mensajería** | Restringido | GDPR Art. 6/9 (transitan por procesador externo) | En tránsito (proveedor) + en reposo (nuestro) | Hasta cierre de emergencia | WhatsApp/IG/Messenger/Telegram procesan el mensaje; no reenviar biométricos por el canal; ingerir adjuntos al almacén protegido. Requiere DPA. |
+| **Contexto de conversación procesado por el LLM** | Confidencial | GDPR Art. 6/9 | En reposo (interno) | No persistir más de lo necesario | **LLM on-premises**: la PII no sale de la frontera (sin proveedor externo). Minimizar lo que se retiene del turno conversacional. |
 | **Relación de parentesco** | Confidencial | GDPR Art. 6/9 | En reposo | Hasta cierre de emergencia | Define el orden de notificación delicada. |
 | **Acreditación de rescatistas/coordinadores** | Confidencial | GDPR Art. 6 (PII laboral) | En reposo | Mientras esté activo | Verificada con autoridades. |
 | **Registro de notificación de fallecimiento** | Restringido | GDPR Art. 9 | En reposo | Cierre de emergencia + 12 meses | Acto sensible; trazabilidad del mediador. |

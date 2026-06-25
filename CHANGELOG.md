@@ -22,6 +22,8 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
   superficies sensibles marcadas. Avanza Gate 1.
 - **README.md** del proyecto: resumen, arquitectura, privacidad/seguridad, estructura de
   documentación AI-DLC y estado por fase.
+- **Diagrama C4 de Componentes del chatbot** (`docs/architecture/c4-component-chatbot.md`):
+  adaptadores de canal, orquestador LLM, intake, guarda de opt-in/relay e ingestor de medios.
 
 ### Changed
 
@@ -31,11 +33,23 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
 - **Umbral de confianza**: > 85 % ya no es verificación automática — ahora requiere **confirmación
   de coordinador**; la única vía automática es el autoreporte (100 %). Actualizado en charter,
   glosario, PRD (RF-06/RF-07) y memoria.
+- **Chatbot**: ahora opera sobre **WhatsApp, Instagram, Messenger y Telegram** con un **LLM
+  autenticado** que conversa y media el intercambio entre actores. Propagado a charter, glosario,
+  data-classification, PRD (RF-01) y los tres diagramas C4 (contexto, contenedores, componentes).
+- **LLM on-premises**: el LLM pasa de proveedor externo a self-hosted dentro de la frontera (la PII
+  conversacional ya no sale del sistema). Eliminado como sistema externo en los tres C4.
+- **Proof-of-life** se entrega como **link asegurado por login**, no como video compartible en chat.
+- **Onboarding de baja fricción**: el rescatista certificado reporta vía WhatsApp sin instalar app
+  ni web; la cola nativa del dispositivo retiene el mensaje hasta tener señal (RF-02).
 
 ### Security
 
-- Nuevos escenarios de abuso en el PRD: declaración de filiación falsa honor-based (AB-12) y fuga
-  del grafo de consultas a SAIME (AB-13).
+- Nuevos escenarios de abuso en el PRD: declaración de filiación falsa honor-based (AB-12), fuga
+  del grafo de consultas a SAIME (AB-13), exposición de datos en redes de mensajería de terceros
+  (AB-14) y LLM tratado como autoritativo o relay sin opt-in (AB-15). Nuevo requisito RS-15
+  (procesadores externos: DPA, sin biométricos por el canal, opción LLM self-hosted).
+- AB-02 reforzado: el onboarding por número de WhatsApp es un autenticador débil (SIM swap) → se
+  exige handshake de certificación y re-verificación. RS-15 actualizado a LLM on-premises.
 - Matriz de abuso del flujo central trazada a OWASP (vigilancia de buscadores, suplantación de
   actores, falsos positivos de alto costo, exfiltración de biométricos, prompt injection en chatbot).
 

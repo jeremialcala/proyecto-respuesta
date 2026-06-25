@@ -221,8 +221,16 @@ Detalle y alternativas descartadas en `data-classification.md`.
 El stack detallado se cierra en fase `02-design`; los componentes acordados son:
 
 1. **Portal Web** — reporte y autoreporte; verificación de familiares/amigos desaparecidos.
-2. **Chatbot (canal principal)** — reportes y notificaciones de personas rescatadas, con enlace
-   al portal principal para la reproducción del video proof-of-life.
+2. **Chatbot (canal principal)** — opera a través de **WhatsApp, Instagram, Messenger y Telegram**
+   sobre un **LLM on-premises** (sin proveedor externo: la conversación con PII no sale de la
+   frontera) que conversa y media el intercambio entre actores. Reglas: las **redes de mensajería**
+   son los únicos procesadores externos del medio en tránsito (requieren DPA); la carga biométrica
+   no se reenvía por el canal (se ingiere al almacén protegido) y el **proof-of-life se entrega
+   como link asegurado por login**, no como video compartible en chat; el LLM **no es autoritativo**
+   (no decide matches ni mueve estados) y respeta el opt-in en el relay. **Onboarding de baja
+   fricción**: una vez certificado, el rescatista reporta vía WhatsApp **sin instalar app ni acceder
+   a la web** — presiona enviar y la **cola nativa del dispositivo** retiene el mensaje hasta que
+   haya conexión.
 3. **Back office** — registro de rescatistas; los coordinadores hacen la identificación real de
    las personas; las autoridades realizan las notificaciones delicadas a familiares verificados.
 4. **Motor de matching (worker en segundo plano)** — implícito: ejecuta la resolución de entidades

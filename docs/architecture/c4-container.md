@@ -18,7 +18,8 @@ C4Container
 
     System_Boundary(sys, "Respuesta — hosting UE (Modelo A)") {
         Container(web, "Portal Web", "SPA", "Reporte/autoreporte, verificación, opt-in, reproducción de proof-of-life")
-        Container(chatbot, "Chatbot", "Bot conversacional", "Canal principal: reportes y notificaciones; enlaza al portal")
+        Container(chatbot, "Pasarela de chatbot", "Multi-red", "Canal principal vía WhatsApp/Instagram/Messenger/Telegram; intake y notificaciones con enlaces al portal (ver C4 de componentes)")
+        Container(llm, "LLM on-premises", "Modelo self-hosted", "Conversa y media; sin proveedor externo; NO decide matches ni estados")
         Container(backoffice, "Back office", "Web app", "Registro de rescatistas, identificación, notificaciones delicadas")
         Container(api, "API / Backend", "REST", "Orquesta reportes, estados, auth y federación")
         ContainerQueue(queue, "Cola offline-first", "Mensajería", "Store-and-forward y sincronización diferida")
@@ -32,9 +33,12 @@ C4Container
 
     System_Ext(pfif, "Red PFIF / ICRC", "Federación de registros")
     System_Ext(saime, "SAIME — Fase 2", "Verificación biométrica nacional")
+    System_Ext(messaging, "Redes de mensajería", "WhatsApp, Instagram, Messenger, Telegram")
 
     Rel(buscador, web, "Reporta, verifica, opt-in", "JSON/HTTPS")
-    Rel(rescatista, chatbot, "Registra encontrado + proof-of-life (offline)", "HTTPS·SMS")
+    Rel(rescatista, messaging, "Registra encontrado + proof-of-life (offline)", "WhatsApp/Telegram")
+    Rel(messaging, chatbot, "Entrega mensajes (webhooks)", "HTTPS")
+    Rel(chatbot, llm, "Inferencia conversacional (on-prem)", "")
     Rel(coordinador, backoffice, "Identifica y confirma matches", "JSON/HTTPS")
     Rel(autoridad, backoffice, "Confirma gravedad/fallecimiento", "JSON/HTTPS")
 
@@ -55,6 +59,7 @@ C4Container
     UpdateElementStyle(media, $bgColor="#7a1f1f", $fontColor="#ffffff", $borderColor="#b30000")
     UpdateElementStyle(matcher, $bgColor="#7a1f1f", $fontColor="#ffffff", $borderColor="#b30000")
     UpdateElementStyle(saime, $bgColor="#7a1f1f", $fontColor="#ffffff", $borderColor="#b30000")
+    UpdateElementStyle(messaging, $borderColor="#b30000")
     UpdateRelStyle(api, saime, $textColor="#b30000", $lineColor="#b30000")
     UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 ```

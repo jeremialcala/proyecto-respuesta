@@ -13,7 +13,8 @@ perfil compartido y reciban el estado más cercano al tiempo real posible.
 ## Qué hace
 
 - **Captura multicanal y offline-first** de reportes (desaparecido / encontrado / autoreporte) con
-  foto, ubicación y descripción, desde web, chatbot (canal principal) y back office.
+  foto, ubicación y descripción, desde web, **chatbot** (canal principal, sobre WhatsApp/Instagram/
+  Messenger/Telegram con un LLM autenticado) y back office.
 - **Motor de resolución de entidades**: agrupa reportes con un único motor y tres emparejamientos
   — colisión (buscador↔buscador), resolución (desaparecido↔encontrado) y deduplicación.
 - **Conciencia de red opt-in**: detecta cuando varios buscan a la misma persona, sin exponer
@@ -36,6 +37,7 @@ humanitario internacional, nube UE / grado GDPR). Ver los diagramas C4:
 
 - [C4 — Contexto](docs/architecture/c4-context.md)
 - [C4 — Contenedores](docs/architecture/c4-container.md)
+- [C4 — Componentes: Pasarela de Chatbot](docs/architecture/c4-component-chatbot.md)
 
 ## Privacidad y seguridad
 
@@ -61,8 +63,9 @@ docs/
 ├── 01-requirements/
 │   └── flujo-central.md        PRD: reporte→match→confirmación→notificación (Gate 0)
 └── architecture/
-    ├── c4-context.md           Diagrama C4 de Contexto
-    └── c4-container.md         Diagrama C4 de Contenedores
+    ├── c4-context.md            Diagrama C4 de Contexto
+    ├── c4-container.md          Diagrama C4 de Contenedores
+    └── c4-component-chatbot.md  Diagrama C4 de Componentes (chatbot)
 ```
 
 ## Estado
