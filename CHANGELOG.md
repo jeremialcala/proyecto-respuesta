@@ -40,6 +40,10 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
   `api-contracts.md` (endpoints REST + eventos AMQP, esqueleto).
 - **Estructura AI-DLC completa**: `.ai-dlc/gates/` (Gate 0 y Gate 1 con estado), `.ai-dlc/templates/`
   (prd, threat-model, adr), placeholders de fases `03-06` y `apps/` (servicios ejecutables).
+- **ADR-0004 — Motor de matching** (`docs/00-project/adr/0004-motor-de-matching.md`): pipeline
+  facial OpenCV YuNet+SFace (face map por persona), tolerancia a drift de edad que empuja a revisión
+  humana (no auto-acepta) y fusión multi-señal. C4 de componentes del motor
+  (`docs/architecture/c4-component-matching.md`) y RF-04/RF-14/RF-15 en el PRD.
 - **Gate 1 SUPERADO** (con deuda documentada): C4 + threat model + ADRs + contratos de API.
 
 ### Changed
@@ -58,6 +62,12 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
 - **Proof-of-life** se entrega como **link asegurado por login**, no como video compartible en chat.
 - **Onboarding de baja fricción**: el rescatista certificado reporta vía WhatsApp sin instalar app
   ni web; la cola nativa del dispositivo retiene el mensaje hasta tener señal (RF-02).
+- **Motor de matching — parámetros resueltos** (ADR-0004): almacenamiento **pgvector** (fuente de
+  verdad, borrado GDPR/merge) + **FAISS HNSWFlat** (M=32, efConstruction=128, efSearch=32) como
+  índice ANN refrescado desde pgvector (HNSW no borra in-place); muestreo de video **Hierarchical
+  Windowing** con tracking previo (umbral de agrupación ~0.40-0.45, más estricto que el match);
+  función de tolerancia a drift (`τ0` + `Δ(edad, age_gap)` que empuja a coordinador) y **fusión de
+  pesos dinámicos**. Reflejado en el C4 del motor.
 
 ### Security
 

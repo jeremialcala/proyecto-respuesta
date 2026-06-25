@@ -85,8 +85,10 @@ glosario).
   sube de forma diferida y comprimida.
 - **RF-03 Entidad-persona.** Cada reporte se asocia (o crea) una entidad-persona; el sistema
   mantiene el perfil combinado (todas las fotos/descripciones de la entidad).
-- **RF-04 Motor de matching.** Genera candidatos en near-real-time cruzando señales facial +
-  geográfica + textual, con una puntuación de confianza por candidato.
+- **RF-04 Motor de matching.** Genera candidatos en near-real-time mediante **fusión multi-señal**:
+  similitud facial (embeddings OpenCV YuNet+SFace, ajustada por drift) + proximidad geográfica +
+  coincidencia textual, con una puntuación de confianza por candidato. Compuerta de calidad para
+  degradar con elegancia ante imágenes de desastre. Ver [ADR-0004](../00-project/adr/0004-motor-de-matching.md).
 - **RF-05 Detección de colisión.** Reconoce cuando varios reportes `desaparecido` apuntan a la
   misma entidad y forma un clúster de búsqueda.
 - **RF-06 Enrutamiento por umbral (parametrizable).** < 65 % descarte; 65–85 % a coordinador;
@@ -108,6 +110,14 @@ glosario).
 - **RF-12 Interoperabilidad PFIF.** Exporta/importa registros de persona y notas en formato PFIF.
 - **RF-13 Auditoría.** Registra toda transición de estado y todo match con actor, timestamp y
   evidencia.
+- **RF-14 Mapeo facial por reporte.** Al ingerir un reporte con foto/video, detecta **todos** los
+  rostros (YuNet) y genera un embedding ("mapa del rostro") por persona (SFace); el buscador
+  **designa** a la persona objetivo; los embeddings de referencia se guardan por entidad y se
+  enriquecen con el clúster. En video, se muestrean frames y se eligen los de mejor calidad.
+- **RF-15 Tolerancia a drift de edad.** Captura la **fecha de la foto** de referencia y la edad
+  estimada; a mayor `age_gap` (y más si es menor) amplía la tolerancia **empujando a revisión de
+  coordinador**, nunca a auto-aceptación. Menores y brechas grandes → siempre revisión humana y
+  mayor peso a señales no faciales.
 
 ## Requisitos de seguridad (mapeados a OWASP ASVS)
 

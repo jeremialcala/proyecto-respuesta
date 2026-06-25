@@ -41,7 +41,7 @@ D=Discoverability). Score = promedio. Ordenadas de mayor a menor.
 | ID | Amenaza | D | R | E | A | D | Score | Control / ADR |
 | :-- | :---- | :-: | :-: | :-: | :-: | :-: | :-: | :---- |
 | **T1** | Vigilancia: reportar a alguien solo para **descubrir quién más lo busca** (AB-01) | 8 | 7 | 7 | 6 | 6 | **6.8** | RS-02; conciencia de red anónima + opt-in; mediación |
-| **T2** | **Falso positivo de match** notificado a una familia (hallazgo/muerte equivocada) (AB-04) | 9 | 6 | 5 | 7 | 5 | **6.4** | RS-09, RF-07 (confirmación humana), proof-of-life; `fallecido` solo autoridad |
+| **T2** | **Falso positivo de match** notificado a una familia (hallazgo/muerte equivocada; agravado por drift de edad y sesgo) (AB-04) | 9 | 6 | 5 | 7 | 5 | **6.4** | RS-09, RF-07 (confirmación humana), proof-of-life; `fallecido` solo autoridad; drift/sesgo enrutan a coordinador (ADR-0004) |
 | **T3** | Inundación de reportes falsos / **DoS** al motor y a coordinadores (AB-03) | 6 | 7 | 7 | 6 | 6 | **6.4** | RS-05 (rate limiting, dedup, anti-abuso) |
 | **T4** | **Exfiltración de biométricos/ubicaciones** (acceso no autorizado o compulsión estatal) (AB-05, AB-14) | 10 | 4 | 4 | 9 | 4 | **6.2** | ADR-0003 (Modelo A), RS-03 (cifrado), RS-02; no biométricos por el canal |
 | **T5** | **Prompt injection** que desvía el LLM del chatbot (AB-07, AB-15) | 6 | 7 | 7 | 5 | 6 | **6.2** | ADR-0002 (NeMo Guardrails), RS-13; LLM no autoritativo (backstop) |

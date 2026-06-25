@@ -7,7 +7,7 @@ Criterio de cierre de la fase 02-design. No marcar superado si queda un criterio
 | Arquitectura (Clean/DDD, contextos acotados) | ✅ | `docs/02-design/architecture.md` |
 | C4 validado (contexto + contenedores) | ✅ | `docs/architecture/c4-context.md`, `c4-container.md`, `c4-component-chatbot.md` (validados) |
 | Threat model STRIDE/DREAD del sistema | ✅ | `docs/02-design/threat-model.md` (T1…T12 priorizadas y trazadas) |
-| ADRs de decisiones clave | ✅ | ADR-0001 (LLM on-prem), ADR-0002 (NeMo Guardrails), ADR-0003 (Modelo A) |
+| ADRs de decisiones clave | ✅ | ADR-0001 (LLM on-prem), ADR-0002 (NeMo Guardrails), ADR-0003 (Modelo A), ADR-0004 (motor de matching) |
 | Contratos de API (esqueleto) | ✅ | `docs/02-design/api-contracts.md` (OpenAPI/AsyncAPI detallado pendiente) |
 | Patrones de seguridad por amenaza DREAD | ✅ | `architecture.md` (tabla) + trazabilidad en `threat-model.md` |
 
@@ -17,4 +17,5 @@ Deuda abierta (no bloqueante para Gate 1, a resolver en implementación):
 - Especificación OpenAPI/AsyncAPI detallada.
 - Mecanismo legal de transferencia transfronteriza (T7, ADR-0003).
 - Diseño de mínima divulgación de SAIME (T8) antes de Fase 2.
-- ADR del motor de matching (algoritmo, umbrales, sesgo).
+- Calibración con datos reales del motor de matching (índice vectorial, umbrales, pesos de fusión,
+  función de tolerancia a drift) — ADR-0004 define el diseño; la calibración va en fase 04-testing.

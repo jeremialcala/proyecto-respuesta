@@ -38,6 +38,7 @@ humanitario internacional, nube UE / grado GDPR). Ver los diagramas C4:
 - [C4 — Contexto](docs/architecture/c4-context.md)
 - [C4 — Contenedores](docs/architecture/c4-container.md)
 - [C4 — Componentes: Pasarela de Chatbot](docs/architecture/c4-component-chatbot.md)
+- [C4 — Componentes: Motor de Matching](docs/architecture/c4-component-matching.md)
 
 ## Privacidad y seguridad
 
@@ -67,7 +68,8 @@ docs/
 │   └── adr/
 │       ├── 0001-llm-on-premises.md                  ADR: Ollama + worker vs. proveedor gestionado
 │       ├── 0002-nemo-guardrails-prompt-injection.md ADR: NeMo Guardrails anti prompt-injection
-│       └── 0003-hosting-modelo-a.md                 ADR: responsable internacional + hosting UE
+│       ├── 0003-hosting-modelo-a.md                 ADR: responsable internacional + hosting UE
+│       └── 0004-motor-de-matching.md                ADR: OpenCV YuNet+SFace, drift de edad, fusión
 ├── 01-requirements/
 │   └── flujo-central.md        PRD: reporte→match→confirmación→notificación (Gate 0)
 ├── 02-design/
@@ -79,9 +81,10 @@ docs/
 ├── 05-deployment/              Fase 05 (Gate 4) — pendiente
 ├── 06-monitoring/              Fase 06 (Gate 5) — pendiente
 └── architecture/
-    ├── c4-context.md            Diagrama C4 de Contexto
-    ├── c4-container.md          Diagrama C4 de Contenedores
-    └── c4-component-chatbot.md  Diagrama C4 de Componentes (chatbot)
+    ├── c4-context.md             Diagrama C4 de Contexto
+    ├── c4-container.md           Diagrama C4 de Contenedores
+    ├── c4-component-chatbot.md   Diagrama C4 de Componentes (chatbot)
+    └── c4-component-matching.md  Diagrama C4 de Componentes (motor de matching)
 ```
 
 ## Estado
