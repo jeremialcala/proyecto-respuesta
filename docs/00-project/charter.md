@@ -223,7 +223,8 @@ El stack detallado se cierra en fase `02-design`; los componentes acordados son:
 1. **Portal Web** — reporte y autoreporte; verificación de familiares/amigos desaparecidos.
 2. **Chatbot (canal principal)** — opera a través de **WhatsApp, Instagram, Messenger y Telegram**
    sobre un **LLM on-premises** (sin proveedor externo: la conversación con PII no sale de la
-   frontera) que conversa y media el intercambio entre actores. Reglas: las **redes de mensajería**
+   frontera; serving con Ollama + worker, ver [ADR-0001](adr/0001-llm-on-premises.md)) que conversa
+   y media el intercambio entre actores. Reglas: las **redes de mensajería**
    son los únicos procesadores externos del medio en tránsito (requieren DPA); la carga biométrica
    no se reenvía por el canal (se ingiere al almacén protegido) y el **proof-of-life se entrega
    como link asegurado por login**, no como video compartible en chat; el LLM **no es autoritativo**

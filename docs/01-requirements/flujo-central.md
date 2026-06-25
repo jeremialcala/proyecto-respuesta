@@ -125,9 +125,9 @@ glosario).
 | **RS-10** | Integridad y firma de los intercambios (PFIF, webhooks de federación). | V10 | L2 | A08 |
 | **RS-11** | Gestión segura de secretos y configuración; sin secretos en código. | V14 | L2 | A02 |
 | **RS-12** | Conciencia de cadena de suministro: SCA y lockfiles para deps del motor y el chatbot. | V14 | L2 | A03 |
-| **RS-13** | Controles de IA: la entrada por mensajería es no confiable → mitigar **prompt injection** (separar instrucciones de datos, limitar tool-use del LLM); LLM **no autoritativo**; **sesgo biométrico** (pieles oscuras, menores); face-match nunca única base de decisión. | V1 + `ai-security-controls` | L2 | A05, A06 |
+| **RS-13** | Controles de IA: la entrada por mensajería es no confiable → mitigar **prompt injection** con **NeMo Guardrails** (input/output/topical rails, ADR-0002), separación instrucciones/datos y tool-use limitado; LLM **no autoritativo** (backstop); **sesgo biométrico** (pieles oscuras, menores); face-match nunca única base de decisión. | V1 + `ai-security-controls` | L2 | A05, A06 |
 | **RS-14** | Manejo de condiciones excepcionales (offline, señal baja, datos parciales) sin fuga de información ni estados inconsistentes. | V7 | L2 | A10 |
-| **RS-15** | **LLM on-premises** (sin proveedor externo: PII no sale de la frontera). Las redes de mensajería siguen siendo procesadores del medio en tránsito: DPA, minimización, sin biométricos por el canal; proof-of-life como link por login. | V1, V8 | L2 | A04, A03 |
+| **RS-15** | **LLM on-premises** (sin proveedor externo: PII no sale de la frontera; serving Ollama + worker, ADR-0001). Las redes de mensajería siguen siendo procesadores del medio en tránsito: DPA, minimización, sin biométricos por el canal; proof-of-life como link por login. | V1, V8 | L2 | A04, A03 |
 
 ## Métricas de éxito
 

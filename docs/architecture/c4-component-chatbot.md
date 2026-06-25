@@ -18,6 +18,7 @@ C4Component
 
     Container_Boundary(cb, "Pasarela de Chatbot") {
         Component(adapters, "Adaptadores de canal", "WhatsApp/Telegram/Meta API", "Normalizan mensajes entrantes y salientes de cada red")
+        Component(guardrails, "Rieles de guardarraíles", "NeMo Guardrails (Colang)", "Input/output/topical rails: anti prompt-injection y validación de salida")
         Component(orchestrator, "Orquestador LLM", "LLM autenticado", "Conversa y media; NO decide matches ni estados")
         Component(intake, "Manejador de intake", "Validación de esquema", "Convierte la conversación en reportes estructurados")
         Component(relayguard, "Guarda de opt-in / relay", "Política", "Aplica el boundary de privacidad al intercambio entre actores")
@@ -29,7 +30,9 @@ C4Component
 
     Rel(actor, messaging, "Conversa, reporta, recibe notificaciones", "App")
     Rel(messaging, adapters, "Entrega mensajes (webhooks)", "HTTPS")
-    Rel(adapters, orchestrator, "Pasa el turno de conversación", "")
+    Rel(adapters, guardrails, "Input rails (anti prompt-injection)", "")
+    Rel(guardrails, orchestrator, "Mensaje saneado", "")
+    Rel(orchestrator, guardrails, "Output rails: valida la respuesta", "")
     Rel(orchestrator, llm, "Inferencia (on-prem)", "")
     Rel(orchestrator, intake, "Extrae reporte estructurado", "")
     Rel(orchestrator, relayguard, "Solicita relay entre actores", "")
@@ -41,6 +44,7 @@ C4Component
     UpdateElementStyle(orchestrator, $bgColor="#7a1f1f", $fontColor="#ffffff", $borderColor="#b30000")
     UpdateElementStyle(mediapuller, $bgColor="#7a1f1f", $fontColor="#ffffff", $borderColor="#b30000")
     UpdateElementStyle(relayguard, $bgColor="#7a1f1f", $fontColor="#ffffff", $borderColor="#b30000")
+    UpdateElementStyle(guardrails, $bgColor="#7a1f1f", $fontColor="#ffffff", $borderColor="#b30000")
     UpdateElementStyle(messaging, $borderColor="#b30000")
     UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 ```
@@ -48,8 +52,11 @@ C4Component
 ## Notas de seguridad
 
 Toda entrada por mensajería es **superficie no confiable**: alimenta el orquestador LLM, por lo que
-el manejo de prompt injection (separar instrucciones de datos, limitar el tool-use del LLM) es
-obligatorio (RS-13, AB-07 → OWASP A05). El **ingestor de medios** materializa la regla de no
+el manejo de prompt injection es obligatorio (RS-13, AB-07 → OWASP A05). Los **rieles de
+guardarraíles (NeMo Guardrails)** aplican input rails (anti-jailbreak), topical/dialogue rails y
+output rails alrededor del LLM — ver [ADR-0002](../00-project/adr/0002-nemo-guardrails-prompt-injection.md).
+Es **defensa en profundidad, no garantía**: el backstop sigue siendo que el LLM no es autoritativo y
+no puede mover estados. El **ingestor de medios** materializa la regla de no
 exponer biométricos: extrae los adjuntos al almacén protegido y nunca los reenvía por la red social;
 el proof-of-life se reproduce en el portal mediante un **link asegurado por login**, nunca como
 video compartible en el chat. La **guarda de opt-in/relay** evita que el intercambio mediado por el

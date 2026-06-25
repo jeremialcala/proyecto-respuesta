@@ -59,7 +59,10 @@ docs/
 ├── 00-project/
 │   ├── charter.md              Visión, alcance, estados, restricciones, riesgos
 │   ├── glossary.md             Lenguaje ubicuo (DDD) y contextos acotados
-│   └── data-classification.md  Inventario de datos sensibles y retención (GDPR)
+│   ├── data-classification.md  Inventario de datos sensibles y retención (GDPR)
+│   └── adr/
+│       ├── 0001-llm-on-premises.md                 ADR: Ollama + worker vs. proveedor gestionado
+│       └── 0002-nemo-guardrails-prompt-injection.md ADR: NeMo Guardrails anti prompt-injection
 ├── 01-requirements/
 │   └── flujo-central.md        PRD: reporte→match→confirmación→notificación (Gate 0)
 └── architecture/

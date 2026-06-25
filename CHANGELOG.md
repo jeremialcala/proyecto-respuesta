@@ -24,6 +24,13 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
   documentación AI-DLC y estado por fase.
 - **Diagrama C4 de Componentes del chatbot** (`docs/architecture/c4-component-chatbot.md`):
   adaptadores de canal, orquestador LLM, intake, guarda de opt-in/relay e ingestor de medios.
+- **ADR-0001 — LLM on-premises** (`docs/00-project/adr/0001-llm-on-premises.md`): decisión de
+  servir el LLM con Ollama + worker frente a un proveedor gestionado, con pros/contras para un
+  servicio masivo sin funding; ruta de evolución a vLLM/TGI. Avanza Gate 1 (ADRs).
+- **ADR-0002 — NeMo Guardrails** (`docs/00-project/adr/0002-nemo-guardrails-prompt-injection.md`):
+  capa anti prompt-injection (input/output/topical rails) sobre el LLM on-prem, como defensa en
+  profundidad; heurísticos-primero por costo. Componente de rieles añadido al C4 del chatbot y
+  trazado en RS-13.
 
 ### Changed
 
