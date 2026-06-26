@@ -3,9 +3,10 @@
 > **C4 — Container view · AI-DLC Fase 02 (Design)**
 >
 > Las unidades desplegables dentro del sistema y cómo se comunican. Todo vive bajo el hosting del
-> Modelo A (UE). La zona de datos restringidos (almacén de medios, motor de matching, almacén de
-> entidades) se marca como trust boundary interno. En rojo: superficies sensibles (biométricos,
-> autenticación, modelo facial, SAIME).
+> Modelo A, **región São Paulo (`sa-east-1`)** (región enmendada por
+> [ADR-0006](../00-project/adr/0006-residencia-sao-paulo.md)). La zona de datos restringidos (almacén
+> de medios, motor de matching, almacén de entidades) se marca como trust boundary interno. En rojo:
+> superficies sensibles (biométricos, autenticación, modelo facial, SAIME).
 
 ```mermaid
 C4Container
@@ -16,25 +17,58 @@ C4Container
     Person(coordinador, "Coordinador", "Identifica y confirma")
     Person(autoridad, "Autoridad civil/médica", "Confirma fallecimiento")
 
-    System_Boundary(sys, "Respuesta — hosting UE (Modelo A)") {
+    System_Boundary(sys, "Respuesta — hosting São Paulo sa-east-1 (Modelo A)") {
         Container(web, "Portal Web", "SPA", "Reporte/autoreporte, verificación, opt-in, reproducción de proof-of-life")
-        Container(chatbot, "Chatbot", "Bot conversacional", "Canal principal: reportes y notificaciones; enlaza al portal")
+        Container(edge, "Edge / Reverse proxy", "TLS, WAF", "Endpoint público que reciben los webhooks de Meta; termina TLS y limita tasa")
+        Container(webhook, "Webhook Gateway de Meta", "Servicio FastAPI", "Borde sin estado: verifica firma, dedup y ACK; publica SOLO el payload crudo a meta.received (no toca workers)")
+        Container(metahandler, "Meta Handler", "Worker", "Consume meta.received, crea el evento, normaliza y reparte a inbound.text/inbound.media (ver C4 de componentes)")
+        Container(chatbot, "Pasarela de chatbot", "Multi-red", "Canal principal vía WhatsApp/Instagram/Messenger/Telegram; intake y notificaciones con enlaces al portal (ver C4 de componentes)")
+        Container(outbound, "Servicio de salida", "Worker", "Envía respuestas a Meta por la Graph API (replies), desacoplado de la recepción")
+        Container(dlqworker, "Gestor de DLQ", "Worker", "Consume las DLQ de todas las colas; marca el evento como fallido (EventAction ERR), alerta y habilita reproceso")
+        Container(llm, "LLM on-premises", "Modelo self-hosted", "Conversa y media; sin proveedor externo; NO decide matches ni estados")
         Container(backoffice, "Back office", "Web app", "Registro de rescatistas, identificación, notificaciones delicadas")
         Container(api, "API / Backend", "REST", "Orquesta reportes, estados, auth y federación")
-        ContainerQueue(queue, "Cola offline-first", "Mensajería", "Store-and-forward y sincronización diferida")
+        ContainerQueue(queue, "Broker gestionado", "AWS SQS/SNS", "Colas SQS + topics SNS (fan-out); meta.received/inbound.text/inbound.media/media.stored/outbound.reply; DLQ por redrive — ADR-0012")
+        ContainerDb(idem, "Store de idempotencia", "Redis", "Dedup de reintentos de Meta y rate de tokens")
+        ContainerDb(eventstore, "Store de eventos", "BD", "Event + EventAction: trazado por pasos (auditoría)")
+        Container(secrets, "Secrets manager", "HashiCorp Vault", "Tokens de Meta, claves JWE y KEK por usuario (cifrado de bóveda) — ADR-0008")
 
         Boundary(restringida, "Zona de datos restringidos", "trust-boundary") {
+            Container(vault, "Worker de Control de Bóveda", "Worker", "Descarga, escanea (AV/CSAM), cifra (sobre+KMS) y persiste los adjuntos de Meta")
             Container(matcher, "Motor de matching", "Worker", "Resolución de entidades + candidatos near-real-time")
             ContainerDb(db, "Almacén de entidades", "BD", "Reportes, entidades, estados, parentesco (PII)")
-            ContainerDb(media, "Almacén de medios", "Object store", "Fotos, video y embeddings biométricos (Restringido)")
+            ContainerDb(media, "Almacén de medios (Bóveda)", "Object store", "Fotos, audio, video y embeddings biométricos (Restringido)")
         }
     }
 
     System_Ext(pfif, "Red PFIF / ICRC", "Federación de registros")
     System_Ext(saime, "SAIME — Fase 2", "Verificación biométrica nacional")
+    System_Ext(messaging, "Redes de mensajería", "WhatsApp, Instagram, Messenger, Telegram")
+    System_Ext(meta, "Plataforma Meta (Graph API)", "Webhooks de entrada + descarga de medios por media_id")
 
     Rel(buscador, web, "Reporta, verifica, opt-in", "JSON/HTTPS")
-    Rel(rescatista, chatbot, "Registra encontrado + proof-of-life (offline)", "HTTPS·SMS")
+    Rel(rescatista, messaging, "Registra encontrado + proof-of-life (offline)", "WhatsApp/Telegram")
+    Rel(meta, edge, "Entrega webhooks (verify + mensajes)", "HTTPS")
+    Rel(edge, webhook, "Reenvía tras TLS/WAF", "HTTPS")
+    Rel(webhook, idem, "Dedup por message_id", "TLS")
+    Rel(webhook, secrets, "Lee app secret y verify_token", "TLS")
+    Rel(webhook, queue, "Publica meta.received (crudo)", "SQS")
+    Rel(queue, metahandler, "Entrega meta.received", "SQS")
+    Rel(metahandler, eventstore, "Persiste Event/EventAction", "TLS")
+    Rel(metahandler, queue, "Publica inbound.text / inbound.media", "SQS")
+    Rel(queue, chatbot, "Entrega inbound.text", "SQS")
+    Rel(queue, vault, "Entrega inbound.media", "SQS")
+    Rel(vault, meta, "Descarga binario por media_id", "HTTPS")
+    Rel(vault, secrets, "Lee token de medios y envuelve DEK (KMS)", "TLS")
+    Rel(vault, media, "Guarda cifrado + metadatos", "TLS")
+    Rel(vault, queue, "Publica media.stored", "SQS")
+    Rel(queue, matcher, "Entrega media.stored (imagen/video)", "SQS")
+    Rel(chatbot, llm, "Inferencia conversacional (on-prem)", "")
+    Rel(chatbot, queue, "Publica outbound.reply", "SQS")
+    Rel(queue, outbound, "Entrega outbound.reply", "SQS")
+    Rel(outbound, meta, "Envía respuesta (Graph API)", "HTTPS")
+    Rel(queue, dlqworker, "Entrega dead-letters (todas las *.dlq)", "SQS")
+    Rel(dlqworker, eventstore, "Marca el evento como fallido (EventAction ERR)", "TLS")
     Rel(coordinador, backoffice, "Identifica y confirma matches", "JSON/HTTPS")
     Rel(autoridad, backoffice, "Confirma gravedad/fallecimiento", "JSON/HTTPS")
 
@@ -42,8 +76,8 @@ C4Container
     Rel(chatbot, api, "Envía reportes y notificaciones", "JSON/HTTPS")
     Rel(backoffice, api, "Gestiona casos y transiciones", "JSON/HTTPS")
 
-    Rel(api, queue, "Encola reportes (offline-first)", "AMQP")
-    Rel(queue, matcher, "Entrega reportes para resolución", "AMQP")
+    Rel(api, queue, "Encola reportes (offline-first)", "SQS")
+    Rel(queue, matcher, "Entrega reportes para resolución", "SQS")
     Rel(api, db, "Lee/escribe reportes, estados y parentesco", "TLS")
     Rel(api, media, "Guarda fotos y video cifrados", "TLS")
     Rel(matcher, db, "Lee/escribe entidades y candidatos", "TLS")
@@ -54,7 +88,10 @@ C4Container
 
     UpdateElementStyle(media, $bgColor="#7a1f1f", $fontColor="#ffffff", $borderColor="#b30000")
     UpdateElementStyle(matcher, $bgColor="#7a1f1f", $fontColor="#ffffff", $borderColor="#b30000")
+    UpdateElementStyle(vault, $bgColor="#7a1f1f", $fontColor="#ffffff", $borderColor="#b30000")
     UpdateElementStyle(saime, $bgColor="#7a1f1f", $fontColor="#ffffff", $borderColor="#b30000")
+    UpdateElementStyle(messaging, $borderColor="#b30000")
+    UpdateElementStyle(meta, $borderColor="#b30000")
     UpdateRelStyle(api, saime, $textColor="#b30000", $lineColor="#b30000")
     UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 ```
@@ -62,10 +99,26 @@ C4Container
 ## Notas de seguridad por contenedor
 
 La **API/Backend** concentra autenticación y autorización por rol y por clúster (RS-01, RS-02 →
-OWASP A07/A01): ningún canal toca los datos directamente. La **cola offline-first** materializa el
-patrón store-and-forward (RF-02) que sostiene la captura en zona de apagón. La **zona de datos
-restringidos** agrupa lo que nunca debe salir sin control: el **almacén de medios** (biométricos y
-video, cifrado — RS-03/RS-08 → A04) y el **motor de matching**, marcado como superficie de IA por
-el riesgo de sesgo facial (RS-13 → `ai-sec`); por eso ninguna fusión por face-match se confirma sin
-un humano. La verificación **SAIME** queda fuera del boundary y en rojo: es Fase 2 y se invoca con
-mínima divulgación para no filtrar al Estado quién consulta por quién (AB-13).
+OWASP A07/A01): ningún canal toca los datos directamente. El **broker gestionado (AWS SQS/SNS, ADR-0012)** materializa el
+patrón store-and-forward (RF-02) que sostiene la captura en zona de apagón, con **DLQ (redrive) y reintentos**
+para no perder mensajes. La ingestión de Meta es una cadena **100 % asíncrona vía SQS/SNS**: el **edge/reverse
+proxy** expone el único endpoint público (TLS/WAF) y el **Webhook Gateway** valida la firma
+`X-Hub-Signature-256` y deduplica reintentos contra el **store de idempotencia** (Redis) — cierra
+suplantación de webhooks y duplicados (threat model T1/T11, RS-06). **Convención clave:** el gateway
+**no toca ningún worker ni el almacén**; su único salto hacia adentro es publicar el **payload crudo**
+a `meta.received`. El **Meta Handler** (worker sin exposición pública) consume ese crudo, crea el
+evento, normaliza y resuelve PII, y reparte a `inbound.text`/`inbound.media`. El **store de eventos**
+audita por pasos sin exponer contenido (cuerpos JWE). La **zona de datos restringidos**
+agrupa lo que nunca debe salir sin control: el **almacén de medios/bóveda** (biométricos y video,
+cifrado — RS-03/RS-08 → A04), el **Worker de Control de Bóveda** —que descarga el binario por
+`media_id`, **escanea AV/CSAM** (child-safety) y **cifra con sobre+KMS** antes de persistir— y el
+**motor de matching**, marcado como superficie de IA por el riesgo de sesgo facial (RS-13 →
+`ai-sec`); por eso ninguna fusión por face-match se confirma sin un humano. El **secrets manager**
+custodia tokens de Meta y claves JWE/KMS fuera del código. El **servicio de salida** desacopla el
+envío de respuestas (Graph API) de la recepción. **Toda cola tiene su DLQ** (DLX→`*.dlq`): el
+**Gestor de DLQ** consume los mensajes inprocesables, **marca el evento como fallido** (EventAction
+ERR) en el store de eventos y habilita alerta/reproceso, de modo que ningún mensaje se pierde en
+silencio y cada fallo queda auditado (RS-06, integridad A08). La verificación **SAIME** queda fuera del boundary
+y en rojo: es Fase 2 y se invoca con mínima divulgación para no filtrar al Estado quién consulta por
+quién (AB-13). Detalle interno en el [C4 de componentes del webhook](c4-component-webhook.md) y
+[ADR-0005](../00-project/adr/0005-webhook-manager-vault-worker.md).

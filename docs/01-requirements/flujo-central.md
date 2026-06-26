@@ -56,7 +56,7 @@ glosario).
 | ID | Escenario de abuso | Mitigación | OWASP |
 | :---- | :---- | :---- | :---- |
 | **AB-01** | Alguien reporta a una persona como desaparecida solo para descubrir **quién más la busca** (vigilancia/acoso). | Conciencia de red anónima agregada; identidades no expuestas por defecto; conexión solo opt-in. | A01 |
-| **AB-02** | Suplantación de un rescatista/coordinador/autoridad para mover estados o leer datos. | Acreditación verificada con autoridad + autenticación fuerte (MFA); autorización por rol. | A07, A01 |
+| **AB-02** | Suplantación de un rescatista/coordinador/autoridad para mover estados o leer datos. Onboarding por WhatsApp ata identidad a un número, que es débil (SIM swap / robo de cuenta). | Acreditación verificada con autoridad; handshake de certificación que vincula el número, re-verificación periódica; acciones de alto costo con verificación adicional. | A07, A01 |
 | **AB-03** | Inundación de reportes falsos (envenenamiento de datos / saturación de coordinadores). | Rate limiting, deduplicación temprana, señal de confianza por reporte, captcha/verificación. | A10, A06 |
 | **AB-04** | Falso positivo de match notificado a una familia (hallazgo o muerte equivocada). | Confirmación humana para acciones de alto costo; proof-of-life autoidentificado; `fallecido` solo por autoridad. | A06 |
 | **AB-05** | Exfiltración de biométricos/ubicaciones por acceso no autorizado o compulsión estatal. | Cifrado en reposo/tránsito; control de acceso; hosting fuera de Venezuela (Modelo A). | A04, A01 |
@@ -68,18 +68,27 @@ glosario).
 | **AB-11** | Explotación de datos de menores. | Tratamiento Restringido, acceso mínimo, face-match nunca como única base de decisión. | A01, A04 |
 | **AB-12** | Declaración de filiación falsa (honor-based, Fase 1) para acceder a un caso o conectar con un clúster. | Registro auditable de la declaración, consecuencias por falsedad, mediación humana en casos delicados, guardarraíles de privacidad reforzados. | A01, A06 |
 | **AB-13** | Fuga del grafo de consultas a SAIME (Fase 2): el Estado deduce quién busca/aparece. | Verificación de mínima divulgación, sin que el Estado registre el origen de la consulta; base legal y salvaguardas antes de habilitar. | A01, A09 |
+| **AB-14** | Datos sensibles (foto, ubicación, video) expuestos al transitar por redes de mensajería de terceros (Meta/Telegram). | No reenviar biométricos por el canal; ingerir adjuntos al almacén protegido; DPA y minimización; cifrado en reposo. | A04, A01 |
+| **AB-15** | El LLM se trata como autoritativo (decide un match/estado), alucina, o su relay conecta actores sin opt-in. | LLM no decide matches ni estados; guarda de opt-in en el relay; validación de salidas; humano confirma acciones de alto costo. | A06, A01 |
 
 ## Requisitos funcionales
 
-- **RF-01 Captura multicanal.** El sistema acepta reportes desde web, chatbot (canal principal) y
-  back office, con tipo/intención (`desaparecido`/`encontrado`/`autoreporte`), foto, ubicación y
-  descripción libre.
-- **RF-02 Offline-first.** La captura funciona sin conexión: encola localmente y sincroniza al
-  recuperar señal (store-and-forward); el video se sube de forma diferida y comprimida.
+- **RF-01 Captura multicanal.** El sistema acepta reportes desde web, **chatbot** (canal principal,
+  operado sobre WhatsApp/Instagram/Messenger/Telegram con un LLM autenticado) y back office, con
+  tipo/intención (`desaparecido`/`encontrado`/`autoreporte`), foto, ubicación y descripción libre.
+  Los adjuntos entrantes se ingieren al almacén protegido y no se reenvían por la red de mensajería.
+  El LLM es **on-premises** (sin proveedor externo). **Onboarding de baja fricción**: el rescatista
+  certificado reporta vía WhatsApp sin instalar app ni acceder a la web.
+- **RF-02 Offline-first.** La captura funciona sin conexión (store-and-forward). En el canal
+  chatbot esto se apoya en la **cola nativa del dispositivo** (p. ej. WhatsApp retiene el mensaje
+  hasta que haya señal), sin requerir una app propia; en web/back office, cola local. El video se
+  sube de forma diferida y comprimida.
 - **RF-03 Entidad-persona.** Cada reporte se asocia (o crea) una entidad-persona; el sistema
   mantiene el perfil combinado (todas las fotos/descripciones de la entidad).
-- **RF-04 Motor de matching.** Genera candidatos en near-real-time cruzando señales facial +
-  geográfica + textual, con una puntuación de confianza por candidato.
+- **RF-04 Motor de matching.** Genera candidatos en near-real-time mediante **fusión multi-señal**:
+  similitud facial (embeddings OpenCV YuNet+SFace, ajustada por drift) + proximidad geográfica +
+  coincidencia textual, con una puntuación de confianza por candidato. Compuerta de calidad para
+  degradar con elegancia ante imágenes de desastre. Ver [ADR-0004](../00-project/adr/0004-motor-de-matching.md).
 - **RF-05 Detección de colisión.** Reconoce cuando varios reportes `desaparecido` apuntan a la
   misma entidad y forma un clúster de búsqueda.
 - **RF-06 Enrutamiento por umbral (parametrizable).** < 65 % descarte; 65–85 % a coordinador;
@@ -92,7 +101,8 @@ glosario).
   (autorreporte/rescatista/coordinador/autoridad). `fallecido` solo por autoridad; el sistema lo
   transmite, no lo deduce.
 - **RF-09 Proof-of-life.** Permite grabar y adjuntar un video de ~30 s, solo con persona consciente
-  y consentimiento explícito; lo entrega al clúster opt-in.
+  y consentimiento explícito; se entrega al clúster opt-in como **link asegurado por login** (no
+  como video compartible en chat).
 - **RF-10 Notificación.** Notifica al clúster respetando el opt-in; las notificaciones delicadas
   (gravedad/fallecimiento) las gestiona un mediador con jerarquía de parentesco verificado.
 - **RF-11 Merge reversible.** Fusiona y **deshace** la fusión de entidades de forma trivial ante un
@@ -100,6 +110,14 @@ glosario).
 - **RF-12 Interoperabilidad PFIF.** Exporta/importa registros de persona y notas en formato PFIF.
 - **RF-13 Auditoría.** Registra toda transición de estado y todo match con actor, timestamp y
   evidencia.
+- **RF-14 Mapeo facial por reporte.** Al ingerir un reporte con foto/video, detecta **todos** los
+  rostros (YuNet) y genera un embedding ("mapa del rostro") por persona (SFace); el buscador
+  **designa** a la persona objetivo; los embeddings de referencia se guardan por entidad y se
+  enriquecen con el clúster. En video, se muestrean frames y se eligen los de mejor calidad.
+- **RF-15 Tolerancia a drift de edad.** Captura la **fecha de la foto** de referencia y la edad
+  estimada; a mayor `age_gap` (y más si es menor) amplía la tolerancia **empujando a revisión de
+  coordinador**, nunca a auto-aceptación. Menores y brechas grandes → siempre revisión humana y
+  mayor peso a señales no faciales.
 
 ## Requisitos de seguridad (mapeados a OWASP ASVS)
 
@@ -117,8 +135,9 @@ glosario).
 | **RS-10** | Integridad y firma de los intercambios (PFIF, webhooks de federación). | V10 | L2 | A08 |
 | **RS-11** | Gestión segura de secretos y configuración; sin secretos en código. | V14 | L2 | A02 |
 | **RS-12** | Conciencia de cadena de suministro: SCA y lockfiles para deps del motor y el chatbot. | V14 | L2 | A03 |
-| **RS-13** | Controles de IA: mitigar prompt injection en el chatbot y **sesgo biométrico** (pieles oscuras, menores); face-match nunca única base de decisión. | V1 + `ai-security-controls` | L2 | A05, A06 |
+| **RS-13** | Controles de IA: la entrada por mensajería es no confiable → mitigar **prompt injection** con **NeMo Guardrails** (input/output/topical rails, ADR-0002), separación instrucciones/datos y tool-use limitado; LLM **no autoritativo** (backstop); **sesgo biométrico** (pieles oscuras, menores); face-match nunca única base de decisión. | V1 + `ai-security-controls` | L2 | A05, A06 |
 | **RS-14** | Manejo de condiciones excepcionales (offline, señal baja, datos parciales) sin fuga de información ni estados inconsistentes. | V7 | L2 | A10 |
+| **RS-15** | **LLM on-premises** (sin proveedor externo: PII no sale de la frontera; serving Ollama + worker, ADR-0001). Las redes de mensajería siguen siendo procesadores del medio en tránsito: DPA, minimización, sin biométricos por el canal; proof-of-life como link por login. | V1, V8 | L2 | A04, A03 |
 
 ## Métricas de éxito
 
@@ -149,6 +168,6 @@ glosario).
 | Charter y glosario | ✅ `docs/00-project/` |
 | Clasificación de datos | ✅ `docs/00-project/data-classification.md` |
 | Requisitos funcionales | ✅ RF-01…RF-13 |
-| Requisitos de seguridad → OWASP ASVS | ✅ RS-01…RS-14 |
-| Escenarios negativos / abuso | ✅ AB-01…AB-11 |
-| Threat assessment | ✅ Matriz de abuso AB-01…AB-11 trazada a OWASP (el threat model formal STRIDE/DREAD se hace en 02-design, Gate 1) |
+| Requisitos de seguridad → OWASP ASVS | ✅ RS-01…RS-15 |
+| Escenarios negativos / abuso | ✅ AB-01…AB-15 |
+| Threat assessment | ✅ Matriz de abuso AB-01…AB-15 trazada a OWASP (el threat model formal STRIDE/DREAD se hace en 02-design, Gate 1) |

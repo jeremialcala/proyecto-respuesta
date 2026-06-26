@@ -26,7 +26,10 @@ se marca para evitar ambigüedad.
 | **Reporte de desaparecido** | Reporte cuya intención es "busco a esta persona". | Lo crea un Buscador. |
 | **Reporte de encontrado** | Reporte cuya intención es "tengo información de / encontré a esta persona". | Lo crea un Rescatista (o coordinador). |
 | **Autoreporte** | Reporte que hace la propia persona sobre sí misma ("estoy a salvo"). | Señal más limpia; puede incluir Proof-of-life. |
-| **Canal** | Medio por el que entra un reporte: Portal Web, Chatbot (canal principal) o Back office. | |
+| **Canal** | Medio por el que entra un reporte: Portal Web, Chatbot (canal principal) o Back office. | El chatbot abarca varias redes de mensajería. |
+| **Pasarela de chatbot** | Componente que opera el chatbot sobre WhatsApp, Instagram, Messenger y Telegram mediante adaptadores por red. | Canal principal; ver C4 de componentes. |
+| **LLM on-premises** | Modelo de lenguaje **self-hosted** (sin proveedor externo) que conversa y media el intercambio entre actores. **No autoritativo**: no decide matches ni estados. | La PII de la conversación no sale de la frontera. |
+| **Procesador externo** | Tercero que trata datos por encargo: las **redes de mensajería** (medio en tránsito). Requiere DPA. | No se le expone la carga biométrica; el LLM ya no es externo. |
 
 ### Identidad y Acreditación
 
@@ -61,7 +64,7 @@ se marca para evitar ambigüedad.
 | Término | Definición | Notas |
 | :---- | :---- | :---- |
 | **Estado** | Situación actual de una persona: `desaparecido`, `a_salvo`, `localizado_estable`, `localizado_critico`, `fallecido`, `no_identificado`. | Ver charter para la matriz de transiciones. |
-| **Proof-of-life** | Video de ~30 s en que la persona consciente se identifica y deja un mensaje. | Señal de identidad de máxima confianza; consentido. |
+| **Proof-of-life** | Video de ~30 s en que la persona consciente se identifica y deja un mensaje. Se entrega como **link asegurado por login**, no como video compartible en chat. | Señal de identidad de máxima confianza; consentido. |
 | **Conciencia de red** | Que un buscador sepa que existen otros buscando a la misma entidad, sin revelar identidades por defecto. | Base anónima agregada. |
 | **Opt-in** | Decisión explícita y revocable de un buscador de revelar su contacto al resto del clúster. | Nunca por defecto. |
 | **Clúster (de búsqueda)** | Conjunto de buscadores asociados a una misma entidad-persona. | Producto de una colisión. |
@@ -74,6 +77,18 @@ se marca para evitar ambigüedad.
 | **PFIF** | *People Finder Interchange Format*: estándar abierto (registros de persona + notas) para intercambiar datos de desaparecidos entre sistemas. | Base de interoperabilidad con ICRC y otros. |
 | **Federación** | Intercambio de registros con repositorios externos (ICRC Trace the Face / MPDM, etc.) sin crear un silo. | Vía PFIF. |
 | **Store-and-forward** | Patrón offline-first: capturar sin conexión, encolar y sincronizar al recuperar señal. | Crítico para el video en zona de apagón. |
+
+### Plataforma, datos y eventos
+
+| Término | Definición | Notas |
+| :---- | :---- | :---- |
+| **Bóveda** | Almacén de medios cifrado (fotos/audio/video + embeddings) dentro de la zona restringida. | Worker de Control de Bóveda (ADR-0005). |
+| **Cifrado por usuario** | Esquema de sobre: una DEK por sujeto cifra sus datos; la DEK se envuelve con una KEK en Vault. | ADR-0008; primera línea técnica tras residencia São Paulo. |
+| **Auditoría append-only** | Tabla inmutable con encadenamiento SHA-256 de toda operación sensible; manipulación detectable. | ADR-0007; sostiene el no repudio (RS-06). |
+| **Certificación de rescatista** | Ciclo `PENDING → CERTIFIED → REVOKED` / `REJECTED` con activación por token JWT. | ADR-0010. |
+| **Cadena de confianza (autoridades)** | Validación jerárquica en cascada: ADMIN raíz → celdas regionales → nodos locales. | ADR-0010. |
+| **Match manual** | Resolución de un candidato por el coordinador (MATCHED/DISCARDED) con justificación y firma. | Emite `match.resolved` (ADR-0010/0011). |
+| **Sobre de evento** | Metadata común de todo evento: `event_id`, `event_type`, `producer`, `timestamp`, `version`, `payload`. | ADR-0011. |
 
 ## Reglas de uso del lenguaje
 

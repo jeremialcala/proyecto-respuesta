@@ -1,0 +1,397 @@
+openapi: 3.1.0
+info:
+  title: Respuesta — API
+  version: 0.1.0
+  description: >-
+    API REST de Respuesta (flujo central: reporte → match → confirmación → notificación).
+    Toda la API exige autenticación (RS-01) y autorización por rol + scope por clúster (RS-02);
+    las entradas se validan por esquema (RS-04) y las transiciones quedan auditadas (RS-06).
+    Decisiones: ver docs/00-project/adr y el threat model.
+
+servers:
+  - url: https://api.respuesta.example/v1
+    description: Hosting Modelo A — región São Paulo (sa-east-1) — ADR-0003/ADR-0006
+
+tags:
+  - name: reports
+  - name: entities
+  - name: candidates
+  - name: state
+  - name: proof-of-life
+  - name: accreditation
+  - name: federation
+  - name: webhooks
+
+security:
+  - bearerAuth: []
+
+paths:
+  /reports:
+    post:
+      tags: [reports]
+      operationId: createReport
+      summary: Crea un reporte (desaparecido / encontrado / autoreporte)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [intention]
+              properties:
+                intention: { $ref: '#/components/schemas/Intention' }
+                subject_name: { type: string }
+                description: { type: string }
+                location: { $ref: '#/components/schemas/GeoPoint' }
+                target_face_index:
+                  type: integer
+                  description: Rostro designado como persona objetivo (multi-rostro).
+                photo:
+                  type: string
+                  format: binary
+                  description: Foto/medio; se ingiere al almacén protegido (no se reenvía por canal).
+      responses:
+        '201':
+          description: Reporte creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Report' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /entities/{id}:
+    get:
+      tags: [entities]
+      operationId: getEntity
+      summary: Devuelve la entidad-persona y su estado (scope por rol/clúster)
+      parameters: [ { $ref: '#/components/parameters/EntityId' } ]
+      responses:
+        '200':
+          description: Entidad
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Entity' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /entities/{id}/cluster:
+    get:
+      tags: [entities]
+      operationId: getClusterAwareness
+      summary: Conciencia de red — agregado anónimo (no expone identidades)
+      parameters: [ { $ref: '#/components/parameters/EntityId' } ]
+      responses:
+        '200':
+          description: Conciencia de red
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClusterAwareness' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /entities/{id}/opt-in:
+    post:
+      tags: [entities]
+      operationId: optIn
+      summary: El buscador revela su contacto al clúster (revocable)
+      parameters: [ { $ref: '#/components/parameters/EntityId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OptInRequest' }
+      responses:
+        '204': { description: Opt-in registrado }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /entities/{id}/state:
+    post:
+      tags: [state]
+      operationId: transitionState
+      summary: Transición de estado según la matriz de autoridad
+      description: >-
+        El mecanismo determina la autoridad requerida. `fallecido` solo por autoridad civil/médica;
+        el sistema transmite el estado, no lo deduce. Toda transición se audita (RS-06).
+      parameters: [ { $ref: '#/components/parameters/EntityId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StateTransition' }
+      responses:
+        '200':
+          description: Estado actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Entity' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /candidates/{id}/confirm:
+    post:
+      tags: [candidates]
+      operationId: confirmCandidate
+      summary: Coordinador confirma o descarta un candidato → match
+      description: Acción de alto costo — requiere coordinador acreditado (RS-09). El face-match no auto-confirma.
+      parameters: [ { $ref: '#/components/parameters/CandidateId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CandidateDecision' }
+      responses:
+        '200':
+          description: Decisión registrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Match' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /proof-of-life/{id}:
+    post:
+      tags: [proof-of-life]
+      operationId: uploadProofOfLife
+      summary: Sube el video de proof-of-life (consentido)
+      parameters: [ { $ref: '#/components/parameters/EntityId' } ]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [video, consent]
+              properties:
+                video: { type: string, format: binary }
+                consent:
+                  type: boolean
+                  description: Consentimiento explícito de la persona consciente.
+      responses:
+        '201':
+          description: Proof-of-life almacenado; devuelve link asegurado por login
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProofOfLifeLink' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    get:
+      tags: [proof-of-life]
+      operationId: getProofOfLife
+      summary: Reproduce el proof-of-life tras login (no compartible)
+      parameters: [ { $ref: '#/components/parameters/EntityId' } ]
+      responses:
+        '200':
+          description: Link/stream asegurado por login
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProofOfLifeLink' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /accreditations:
+    post:
+      tags: [accreditation]
+      operationId: createAccreditation
+      summary: Acredita un rescatista/coordinador (en coordinación con la autoridad)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccreditationRequest' }
+      responses:
+        '201':
+          description: Acreditación creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Accreditation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /pfif/export:
+    post:
+      tags: [federation]
+      operationId: pfifExport
+      summary: Exporta registros en formato PFIF
+      responses:
+        '202': { description: Exportación encolada }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /pfif/import:
+    post:
+      tags: [federation]
+      operationId: pfifImport
+      summary: Importa registros PFIF (firmados — integridad RS-10)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Lote PFIF (person + note records) }
+      responses:
+        '202': { description: Importación encolada }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /webhooks/{network}:
+    post:
+      tags: [webhooks]
+      operationId: messagingWebhook
+      summary: Mensajes entrantes de las redes de mensajería (pasan por los rieles)
+      description: Entrada NO confiable → rieles NeMo Guardrails (ADR-0002) antes del LLM.
+      security: []
+      parameters:
+        - name: network
+          in: path
+          required: true
+          schema: { type: string, enum: [whatsapp, instagram, messenger, telegram] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Payload propio de cada red (verificado por firma). }
+      responses:
+        '200': { description: Recibido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        JWT tras autenticación fuerte (MFA para actores acreditados — RS-01). El portal ciudadano
+        emite el JWT vía Auth0 (OAuth 2.0 / OIDC, social login) — ADR-0009.
+
+  parameters:
+    EntityId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CandidateId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: Petición inválida
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Unauthorized:
+      description: No autenticado
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Forbidden:
+      description: Sin permiso (rol/clúster)
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: No encontrado
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Conflict:
+      description: Transición de estado no permitida
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Unprocessable:
+      description: Validación de esquema fallida
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Error' } } }
+    TooManyRequests:
+      description: Rate limit (anti-abuso RS-05)
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Error' } } }
+
+  schemas:
+    Intention:
+      type: string
+      enum: [desaparecido, encontrado, autoreporte]
+    PersonState:
+      type: string
+      enum: [desaparecido, a_salvo, localizado_estable, localizado_critico, fallecido, no_identificado]
+    Mechanism:
+      type: string
+      enum: [autorreporte, rescatista, coordinador, autoridad]
+      description: Mecanismo/autoridad de la transición (matriz del charter).
+    GeoPoint:
+      type: object
+      properties:
+        lat: { type: number, format: double, minimum: -90, maximum: 90 }
+        lon: { type: number, format: double, minimum: -180, maximum: 180 }
+    Report:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        intention: { $ref: '#/components/schemas/Intention' }
+        entity_id: { type: string, format: uuid }
+        state: { $ref: '#/components/schemas/PersonState' }
+        created_at: { type: string, format: date-time }
+    Entity:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        state: { $ref: '#/components/schemas/PersonState' }
+        cluster_size: { type: integer, minimum: 1 }
+        updated_at: { type: string, format: date-time }
+    ClusterAwareness:
+      type: object
+      description: Agregado anónimo — nunca expone identidades por defecto.
+      properties:
+        entity_id: { type: string, format: uuid }
+        searchers_count: { type: integer, minimum: 0 }
+    OptInRequest:
+      type: object
+      required: [contact, consent]
+      properties:
+        contact: { type: string }
+        consent: { type: boolean }
+    StateTransition:
+      type: object
+      required: [to_state, mechanism]
+      properties:
+        to_state: { $ref: '#/components/schemas/PersonState' }
+        mechanism: { $ref: '#/components/schemas/Mechanism' }
+        evidence_ref: { type: string, description: Referencia a evidencia (autoridad para fallecido). }
+    CandidateDecision:
+      type: object
+      required: [decision]
+      properties:
+        decision: { type: string, enum: [confirm, reject] }
+        note: { type: string }
+    Match:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        entity_id: { type: string, format: uuid }
+        confirmed_by: { type: string }
+        confirmed_at: { type: string, format: date-time }
+    ProofOfLifeLink:
+      type: object
+      properties:
+        url: { type: string, format: uri, description: Link asegurado por login (no compartible). }
+        expires_at: { type: string, format: date-time }
+    AccreditationRequest:
+      type: object
+      required: [actor_id, role, authority_ref]
+      properties:
+        actor_id: { type: string }
+        role: { type: string, enum: [rescatista, coordinador, autoridad] }
+        authority_ref: { type: string }
+    Accreditation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        actor_id: { type: string }
+        role: { type: string, enum: [rescatista, coordinador, autoridad] }
+        active: { type: boolean }
+    Error:
+      type: object
+      description: Problem Details (RFC 7807)
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
