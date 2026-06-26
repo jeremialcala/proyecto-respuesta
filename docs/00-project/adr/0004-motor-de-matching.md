@@ -1,6 +1,6 @@
 # ADR-0004: Motor de matching facial (OpenCV YuNet + SFace) con tolerancia a drift de edad
 
-- **Estado:** accepted
+- **Estado:** accepted — **motor de embedding y scoring enmendados por [ADR-0013](0013-arcface-scoring-solo-rostro.md)** (SFace→ArcFace IResNet100 512-d; scoring solo-rostro en MVP)
 - **Fecha:** 2026-06-25
 - **Decisores:** Jeremi
 - **Fase AI-DLC:** 02-design

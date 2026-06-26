@@ -76,7 +76,7 @@ control del operador humanitario internacional (responsable, sin cambio respecto
 
 - `<TODO>` Base legal LGPD concreta para el tratamiento de categoría especial (biométricos) y para la
   transferencia Venezuela→Brasil.
-- `<TODO>` Proveedor cloud concreto en `sa-east-1` y disponibilidad de GPU para el LLM (ADR-0001).
+- ✅ **Resuelto — Proveedor cloud: AWS** (`sa-east-1`). GPU para el MVP **on-premises: NVIDIA RTX 3090 (24 GB)**, compartida por el LLM (ADR-0001) y ArcFace (ADR-0013); post-MVP se evaluará cómputo distribuido por crowdsourcing o sponsor (ADR-0001/ADR-0013).
 - `<TODO>` Evaluar si una sub-clase de datos (menores, fallecimiento) merece la opción híbrida (C).
 
 ## Disparadores de revisión

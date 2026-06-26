@@ -57,3 +57,15 @@ def test_fusion_uses_geo_and_text_when_present():
     out = svc.resolve(ProbeContext(embedding=(0.0,), geo_sim=0.6, text_sim=0.4))
     # 0.6*0.8 + 0.25*0.6 + 0.15*0.4 = 0.69
     assert round(out[0].fused_score, 4) == 0.69
+
+
+def test_candidate_payload_aligns_with_adr0011():
+    """El payload de candidate.generated lleva report_id, face_score y match_found (ADR-0011)."""
+    svc, bus = make_service([("e1", 0.4)])
+    svc.resolve(ProbeContext(embedding=(0.0,), report_id="rep_1"))
+    event, payload = bus.events[0]
+    assert event == "candidate.generated"
+    assert payload["report_id"] == "rep_1"
+    assert payload["match_found"] is True
+    assert round(payload["face_score"], 4) == 0.6  # 1 - 0.4
+    assert payload["entity_id"] == "e1"

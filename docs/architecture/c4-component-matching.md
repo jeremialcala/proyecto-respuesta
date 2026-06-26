@@ -26,7 +26,7 @@ C4Component
         Component(fusion, "Fusión multi-señal", "Scoring", "Combina rostro + geo + texto → confianza")
     }
 
-    Rel(queue, facemapper, "Entrega reporte ingerido", "AMQP")
+    Rel(queue, facemapper, "Entrega reporte ingerido", "SQS")
     Rel(facemapper, media, "Lee foto / frames de video", "TLS")
     Rel(facemapper, quality, "Rostros + embeddings", "")
     Rel(quality, estore, "Guarda embeddings de referencia (desaparecido)", "")

@@ -3,22 +3,22 @@ info:
   title: Respuesta — Eventos
   version: 0.1.0
   description: >-
-    Eventos asíncronos (patrón cola + worker, AMQP) del flujo central. La cola absorbe picos sin
+    Eventos asíncronos (patrón cola + worker sobre AWS SQS/SNS — ADR-0012) del flujo central. La cola absorbe picos sin
     perder mensajes (offline-first, ADR-0001). El motor de matching consume `report.ingested` y
     publica `candidate.generated`. Las transiciones de estado se auditan (RS-06).
     Los canales `inbound.*`/`media.stored`/`outbound.reply` modelan la ingestión de Meta del Gestor
     de Webhooks y el Worker de Bóveda (ADR-0005): texto al LLM on-prem, adjuntos a la bóveda cifrada.
     Los cuerpos con PII viajan cifrados en JWE.
-    Sobre común de eventos (ADR-0011): todo evento adopta `event_id`, `event_type` (`dominio.evento`),
+    Sobre común de eventos (ADR-0011): todo evento adopta `event_id`, `event_type` (`domain.event`),
     `producer`, `timestamp`, `version` (semver) y `payload`. Catálogo canónico del flujo central:
-    `reporte.creado`, `match.evaluado`, `match.resuelto`, `notificacion.estado_cambiado` (los nombres
-    actuales `report.*`/`candidate.*`/`state.*` se migran a esa convención — ver ADR-0011).
+    catálogo canónico en **inglés** (`report.received`, `report.ingested`, `candidate.generated`,
+    `match.confirmed`, `match.resolved`, `state.changed`, `notification.sent`) — ver ADR-0011.
 
 servers:
   broker:
-    url: amqp://broker.respuesta.internal:5672
-    protocol: amqp
-    description: Broker AMQP — RabbitMQ (hosting Modelo A, São Paulo sa-east-1 — ADR-0003/ADR-0006)
+    url: https://sqs.sa-east-1.amazonaws.com
+    protocol: sqs
+    description: Broker gestionado AWS SQS/SNS (fan-out SNS, DLQ por redrive) — ADR-0012 (sa-east-1)
 
 defaultContentType: application/json
 
@@ -93,14 +93,14 @@ channels:
     publish:
       operationId: onMatchConfirmed
       message: { $ref: '#/components/messages/MatchConfirmed' }
-  match.resuelto:
+  match.resolved:
     description: >-
       Resolución manual de un candidato por el coordinador desde el back office (ADR-0010): MATCHED o
       DISCARDED, con justificación y firma. Cierra el ciclo del match manual y alimenta la auditoría
       SHA-256 (ADR-0007/ADR-0011).
     publish:
-      operationId: onMatchResuelto
-      message: { $ref: '#/components/messages/MatchResuelto' }
+      operationId: onMatchResolved
+      message: { $ref: '#/components/messages/MatchResolved' }
   state.changed:
     description: Transición de estado (auditada).
     publish:
@@ -144,9 +144,9 @@ components:
     MatchConfirmed:
       name: MatchConfirmed
       payload: { $ref: '#/components/schemas/MatchConfirmed' }
-    MatchResuelto:
-      name: MatchResuelto
-      payload: { $ref: '#/components/schemas/MatchResuelto' }
+    MatchResolved:
+      name: MatchResolved
+      payload: { $ref: '#/components/schemas/MatchResolved' }
     StateChanged:
       name: StateChanged
       payload: { $ref: '#/components/schemas/StateChanged' }
@@ -283,7 +283,7 @@ components:
         entity_id: { type: string, format: uuid }
         confirmed_by: { type: string, description: coordinador | autoreporte }
         confirmed_at: { type: string, format: date-time }
-    MatchResuelto:
+    MatchResolved:
       type: object
       description: 'Decisión manual del coordinador sobre un candidato (ADR-0010/ADR-0011).'
       required: [match_id, decision, coordinador_id]

@@ -36,7 +36,7 @@ ADR-0004 (65–85 % → coordinador; >85 % fusiona solo con confirmación humana
 **2. Flujo de match manual.** UI de comparación lado a lado (Entidad A = reporte de búsqueda vs
 Entidad B = reporte en terreno) con panel de resolución: **ES UN MATCH** (agrupa reportes y notifica
 a familiares) o **DESCARTAR** (separa entidades de forma permanente). **Justificación obligatoria** +
-**firma del coordinador** (usuario + ID). La decisión emite el evento `match.resuelto` (ADR-0011) y
+**firma del coordinador** (usuario + ID). La decisión emite el evento `match.resolved` (ADR-0011) y
 se registra en la auditoría append-only con encadenamiento SHA-256 (ADR-0007). El merge sigue siendo
 reversible (RF-11).
 

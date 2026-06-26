@@ -3,12 +3,12 @@
 > **C4 — Component view · AI-DLC Fase 02 (Design)**
 >
 > Ingestión de mensajes de Meta (WhatsApp Business / Messenger / Instagram) como cadena de servicios
-> **100 % asíncrona vía AMQP**. **Convención:** el webhook **nunca toca los workers** ni el almacén
+> **100 % asíncrona vía SQS/SNS**. **Convención:** el webhook **nunca toca los workers** ni el almacén
 > directamente; solo recibe, verifica y **publica el mensaje crudo** a una cola. Un **Meta Handler**
 > consume ese crudo, lo procesa (crea el evento, normaliza, identifica el tipo) y lo **reparte a las
 > colas correspondientes**: el **texto** va al LLM on-prem y los **adjuntos** al **Worker de Control
 > de Bóveda**. Diseño basado en la sección de webhooks del repo `wh-python-fastapi-messenger`
-> (handshake `hub.challenge`, `EventTransport`/`EventAction` para trazado por pasos, publicación AMQP
+> (handshake `hub.challenge`, `EventTransport`/`EventAction` para trazado por pasos, publicación a SQS
 > con cuerpo cifrado JWE). Reglas en rojo: superficie no confiable de Meta, biométricos al almacén
 > protegido (nunca se reenvían), y escaneo de seguridad de medios obligatorio.
 
@@ -19,22 +19,22 @@ C4Component
     System_Ext(meta, "Plataforma Meta", "WhatsApp Business / Messenger / Instagram (Graph API + webhooks)")
     Container(edge, "Edge / Reverse proxy", "TLS, WAF", "Endpoint público HTTPS que Meta golpea; termina TLS y limita tasa")
     ContainerDb(idem, "Store de idempotencia", "Redis", "Dedup de reintentos de Meta por message_id (TTL)")
-    ContainerQueue(broker, "Broker AMQP", "RabbitMQ", "meta.received / inbound.text / inbound.media / media.stored / outbound.reply; cada cola tiene DLX→.dlq")
+    ContainerQueue(broker, "Broker gestionado", "AWS SQS/SNS", "meta.received / inbound.text / inbound.media / media.stored / outbound.reply; cada cola tiene redrive→.dlq")
 
     Container_Boundary(gw, "Webhook Gateway (borde, sin estado)") {
         Component(verify, "Verificador de webhook", "GET handshake", "Responde hub.challenge si hub.verify_token coincide (por bot)")
         Component(receiver, "Receptor de webhook", "POST, ACK<5s", "Recibe el payload y devuelve 200 de inmediato")
         Component(sigval, "Validador de firma", "HMAC X-Hub-Signature-256", "Rechaza payloads sin firma válida del app secret")
         Component(idemguard, "Guarda de idempotencia", "Dedup", "Descarta entregas repetidas por message_id (Meta reintenta)")
-        Component(rawpub, "Publicador de crudo", "Productor AMQP", "Publica el payload crudo a meta.received (no procesa ni resuelve nada)")
+        Component(rawpub, "Publicador de crudo", "Productor SQS", "Publica el payload crudo a meta.received (no procesa ni resuelve nada)")
     }
 
     Container_Boundary(mh, "Meta Handler (worker)") {
-        Component(rawcons, "Consumidor de crudo", "Consumidor AMQP", "Consume meta.received")
+        Component(rawcons, "Consumidor de crudo", "Consumidor SQS", "Consume meta.received")
         Component(eventfac, "Fábrica de eventos", "Event + JWK", "Crea el Event y emite EventAction por paso (trazabilidad)")
         Component(normalizer, "Normalizador", "Parser de payload", "Identifica object (page/whatsapp_business_account) y resuelve el contacto")
         Component(dispatcher, "Dispatcher de tipo", "Router", "Texto vs. adjunto (image/audio/video/document)")
-        Component(qprod, "Productor a colas", "Productor AMQP", "Publica inbound.text (JWE) o inbound.media (media_id)")
+        Component(qprod, "Productor a colas", "Productor SQS", "Publica inbound.text (JWE) o inbound.media (media_id)")
     }
 
     Container_Boundary(vcw, "Worker de Control de Bóveda") {
@@ -61,18 +61,18 @@ C4Component
     Rel(idemguard, rawpub, "Si es nuevo, publica crudo", "")
     Rel(verify, secrets, "Lee verify_token por bot", "TLS")
     Rel(sigval, secrets, "Lee app secret", "TLS")
-    Rel(rawpub, broker, "Publica meta.received (payload crudo)", "AMQP")
+    Rel(rawpub, broker, "Publica meta.received (payload crudo)", "SQS")
 
-    Rel(broker, rawcons, "Entrega meta.received", "AMQP")
+    Rel(broker, rawcons, "Entrega meta.received", "SQS")
     Rel(rawcons, eventfac, "Inicia traza", "")
     Rel(eventfac, eventstore, "Persiste Event/EventAction", "TLS")
     Rel(eventfac, normalizer, "Procesa el crudo", "")
     Rel(normalizer, dispatcher, "Enruta por tipo", "")
     Rel(dispatcher, qprod, "Texto o adjunto", "")
-    Rel(qprod, broker, "Publica inbound.text / inbound.media", "AMQP")
+    Rel(qprod, broker, "Publica inbound.text / inbound.media", "SQS")
 
-    Rel(broker, chatbot, "Entrega inbound.text", "AMQP")
-    Rel(broker, downloader, "Entrega inbound.media", "AMQP")
+    Rel(broker, chatbot, "Entrega inbound.text", "SQS")
+    Rel(broker, downloader, "Entrega inbound.media", "SQS")
     Rel(downloader, meta, "GET binario por media_id", "HTTPS")
     Rel(downloader, secrets, "Lee token de medios", "TLS")
     Rel(downloader, scanner, "Binario en cuarentena", "")
@@ -80,13 +80,13 @@ C4Component
     Rel(encryptor, secrets, "Envuelve DEK con KMS", "TLS")
     Rel(encryptor, vaultsvc, "Binario cifrado", "")
     Rel(vaultsvc, media, "Guarda cifrado + metadatos", "TLS")
-    Rel(vaultsvc, broker, "Publica media.stored (media_ref)", "AMQP")
-    Rel(broker, matcher, "Entrega media.stored (imagen/video)", "AMQP")
-    Rel(chatbot, broker, "Publica outbound.reply", "AMQP")
-    Rel(broker, outbound, "Entrega outbound.reply", "AMQP")
+    Rel(vaultsvc, broker, "Publica media.stored (media_ref)", "SQS")
+    Rel(broker, matcher, "Entrega media.stored (imagen/video)", "SQS")
+    Rel(chatbot, broker, "Publica outbound.reply", "SQS")
+    Rel(broker, outbound, "Entrega outbound.reply", "SQS")
     Rel(outbound, meta, "Envía respuesta (Graph API)", "HTTPS")
 
-    Rel(broker, dlqworker, "Entrega dead-letters de toda cola (tras N reintentos)", "AMQP")
+    Rel(broker, dlqworker, "Entrega dead-letters de toda cola (tras N reintentos)", "SQS")
     Rel(dlqworker, eventstore, "Marca el evento como fallido (EventAction ERR)", "TLS")
 
     UpdateElementStyle(meta, $borderColor="#b30000")
@@ -124,7 +124,7 @@ C4Component
 
 > **Convención de la arquitectura:** ningún componente público invoca a un worker de forma directa.
 > El **único** salto del gateway hacia adentro es publicar `meta.received`; todo lo demás se mueve por
-> el broker AMQP (cola + worker). El procesamiento del mensaje crudo es responsabilidad exclusiva del
+> el broker SQS/SNS (cola + worker). El procesamiento del mensaje crudo es responsabilidad exclusiva del
 > **Meta Handler**, no del gateway.
 
 ### Manejo de fallos (DLQ universal)

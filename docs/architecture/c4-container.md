@@ -28,7 +28,7 @@ C4Container
         Container(llm, "LLM on-premises", "Modelo self-hosted", "Conversa y media; sin proveedor externo; NO decide matches ni estados")
         Container(backoffice, "Back office", "Web app", "Registro de rescatistas, identificación, notificaciones delicadas")
         Container(api, "API / Backend", "REST", "Orquesta reportes, estados, auth y federación")
-        ContainerQueue(queue, "Broker AMQP", "RabbitMQ", "Cola offline-first + meta.received/inbound.text/inbound.media/media.stored/outbound.reply; cada cola con DLX→.dlq y reintentos")
+        ContainerQueue(queue, "Broker gestionado", "AWS SQS/SNS", "Colas SQS + topics SNS (fan-out); meta.received/inbound.text/inbound.media/media.stored/outbound.reply; DLQ por redrive — ADR-0012")
         ContainerDb(idem, "Store de idempotencia", "Redis", "Dedup de reintentos de Meta y rate de tokens")
         ContainerDb(eventstore, "Store de eventos", "BD", "Event + EventAction: trazado por pasos (auditoría)")
         Container(secrets, "Secrets manager", "HashiCorp Vault", "Tokens de Meta, claves JWE y KEK por usuario (cifrado de bóveda) — ADR-0008")
@@ -52,22 +52,22 @@ C4Container
     Rel(edge, webhook, "Reenvía tras TLS/WAF", "HTTPS")
     Rel(webhook, idem, "Dedup por message_id", "TLS")
     Rel(webhook, secrets, "Lee app secret y verify_token", "TLS")
-    Rel(webhook, queue, "Publica meta.received (crudo)", "AMQP")
-    Rel(queue, metahandler, "Entrega meta.received", "AMQP")
+    Rel(webhook, queue, "Publica meta.received (crudo)", "SQS")
+    Rel(queue, metahandler, "Entrega meta.received", "SQS")
     Rel(metahandler, eventstore, "Persiste Event/EventAction", "TLS")
-    Rel(metahandler, queue, "Publica inbound.text / inbound.media", "AMQP")
-    Rel(queue, chatbot, "Entrega inbound.text", "AMQP")
-    Rel(queue, vault, "Entrega inbound.media", "AMQP")
+    Rel(metahandler, queue, "Publica inbound.text / inbound.media", "SQS")
+    Rel(queue, chatbot, "Entrega inbound.text", "SQS")
+    Rel(queue, vault, "Entrega inbound.media", "SQS")
     Rel(vault, meta, "Descarga binario por media_id", "HTTPS")
     Rel(vault, secrets, "Lee token de medios y envuelve DEK (KMS)", "TLS")
     Rel(vault, media, "Guarda cifrado + metadatos", "TLS")
-    Rel(vault, queue, "Publica media.stored", "AMQP")
-    Rel(queue, matcher, "Entrega media.stored (imagen/video)", "AMQP")
+    Rel(vault, queue, "Publica media.stored", "SQS")
+    Rel(queue, matcher, "Entrega media.stored (imagen/video)", "SQS")
     Rel(chatbot, llm, "Inferencia conversacional (on-prem)", "")
-    Rel(chatbot, queue, "Publica outbound.reply", "AMQP")
-    Rel(queue, outbound, "Entrega outbound.reply", "AMQP")
+    Rel(chatbot, queue, "Publica outbound.reply", "SQS")
+    Rel(queue, outbound, "Entrega outbound.reply", "SQS")
     Rel(outbound, meta, "Envía respuesta (Graph API)", "HTTPS")
-    Rel(queue, dlqworker, "Entrega dead-letters (todas las *.dlq)", "AMQP")
+    Rel(queue, dlqworker, "Entrega dead-letters (todas las *.dlq)", "SQS")
     Rel(dlqworker, eventstore, "Marca el evento como fallido (EventAction ERR)", "TLS")
     Rel(coordinador, backoffice, "Identifica y confirma matches", "JSON/HTTPS")
     Rel(autoridad, backoffice, "Confirma gravedad/fallecimiento", "JSON/HTTPS")
@@ -76,8 +76,8 @@ C4Container
     Rel(chatbot, api, "Envía reportes y notificaciones", "JSON/HTTPS")
     Rel(backoffice, api, "Gestiona casos y transiciones", "JSON/HTTPS")
 
-    Rel(api, queue, "Encola reportes (offline-first)", "AMQP")
-    Rel(queue, matcher, "Entrega reportes para resolución", "AMQP")
+    Rel(api, queue, "Encola reportes (offline-first)", "SQS")
+    Rel(queue, matcher, "Entrega reportes para resolución", "SQS")
     Rel(api, db, "Lee/escribe reportes, estados y parentesco", "TLS")
     Rel(api, media, "Guarda fotos y video cifrados", "TLS")
     Rel(matcher, db, "Lee/escribe entidades y candidatos", "TLS")
@@ -99,9 +99,9 @@ C4Container
 ## Notas de seguridad por contenedor
 
 La **API/Backend** concentra autenticación y autorización por rol y por clúster (RS-01, RS-02 →
-OWASP A07/A01): ningún canal toca los datos directamente. El **broker AMQP** materializa el
-patrón store-and-forward (RF-02) que sostiene la captura en zona de apagón, con **DLQ y reintentos**
-para no perder mensajes. La ingestión de Meta es una cadena **100 % asíncrona vía AMQP**: el **edge/reverse
+OWASP A07/A01): ningún canal toca los datos directamente. El **broker gestionado (AWS SQS/SNS, ADR-0012)** materializa el
+patrón store-and-forward (RF-02) que sostiene la captura en zona de apagón, con **DLQ (redrive) y reintentos**
+para no perder mensajes. La ingestión de Meta es una cadena **100 % asíncrona vía SQS/SNS**: el **edge/reverse
 proxy** expone el único endpoint público (TLS/WAF) y el **Webhook Gateway** valida la firma
 `X-Hub-Signature-256` y deduplica reintentos contra el **store de idempotencia** (Redis) — cierra
 suplantación de webhooks y duplicados (threat model T1/T11, RS-06). **Convención clave:** el gateway

@@ -44,7 +44,7 @@ superficies sensibles están marcados ahí.
 
 ## Contratos de API
 
-Esqueleto en [`api-contracts.md`](api-contracts.md) (endpoints REST + eventos AMQP). Detalle
+Esqueleto en [`api-contracts.md`](api-contracts.md) (endpoints REST + eventos SQS/SNS). Detalle
 OpenAPI/AsyncAPI pendiente.
 
 ## Patrones de seguridad seleccionados (por amenaza DREAD priorizada)

@@ -87,7 +87,7 @@ se marca para evitar ambigüedad.
 | **Auditoría append-only** | Tabla inmutable con encadenamiento SHA-256 de toda operación sensible; manipulación detectable. | ADR-0007; sostiene el no repudio (RS-06). |
 | **Certificación de rescatista** | Ciclo `PENDING → CERTIFIED → REVOKED` / `REJECTED` con activación por token JWT. | ADR-0010. |
 | **Cadena de confianza (autoridades)** | Validación jerárquica en cascada: ADMIN raíz → celdas regionales → nodos locales. | ADR-0010. |
-| **Match manual** | Resolución de un candidato por el coordinador (MATCHED/DISCARDED) con justificación y firma. | Emite `match.resuelto` (ADR-0010/0011). |
+| **Match manual** | Resolución de un candidato por el coordinador (MATCHED/DISCARDED) con justificación y firma. | Emite `match.resolved` (ADR-0010/0011). |
 | **Sobre de evento** | Metadata común de todo evento: `event_id`, `event_type`, `producer`, `timestamp`, `version`, `payload`. | ADR-0011. |
 
 ## Reglas de uso del lenguaje

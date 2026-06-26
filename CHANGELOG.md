@@ -12,6 +12,10 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
 
 ### Added
 
+- **ADR-0012 y ADR-0013** (`docs/00-project/adr/`): broker de mensajería **AWS SQS/SNS** (0012,
+  enmienda el transporte AMQP de ADR-0005/0011); **motor de embedding ArcFace/IResNet100 (512-d) y
+  scoring solo-rostro en MVP** (0013, enmienda ADR-0004). Resueltas las decisiones de arranque:
+  nombres de eventos en inglés, cloud AWS con GPU on-prem.
 - **ADR-0006 a ADR-0011** (`docs/00-project/adr/`): residencia en São Paulo (0006, enmienda la región
   del 0003); esquema dinámico del reporte + retención + auditoría append-only SHA-256 (0007); bóveda de
   llaves por usuario con HashiCorp Vault + identidad WhatsApp+email/KYC (0008); auth del portal con
@@ -31,6 +35,13 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
   `api-contracts.md`; endpoints de portal y back office añadidos a `api-contracts.md`.
 - **Glosario**: términos de plataforma/eventos (Bóveda, Cifrado por usuario, Auditoría append-only,
   Certificación de rescatista, Cadena de confianza, Match manual, Sobre de evento).
+- **Broker AMQP/RabbitMQ → AWS SQS/SNS** (ADR-0012) propagado a `asyncapi.yaml` (server sqs, DLQ por
+  redrive), C4 de contenedores (relaciones SQS), `api-contracts.md`. Evento `match.resuelto` renombrado
+  a **`match.resolved`** y catálogo de eventos unificado a **inglés** (ADR-0011).
+- **Motor de matching SFace → ArcFace/IResNet100 (512-d)** y **scoring solo-rostro** (ADR-0013)
+  reflejado en inventario y contratos; recalibración de umbrales pendiente (fase 04).
+- **Hardware del MVP fijado: NVIDIA RTX 3090 (24 GB) on-prem**, compartida por el LLM (ADR-0001) y ArcFace (ADR-0013); registrado en ADR-0001/0006/0013.
+- **`apps/matching-worker` reescrito a ArcFace + SQS/SNS** (ADR-0012/0013): adaptadores `arcface_facemapper`, `sqs_consumer`, `sqs_sns_event_bus`; `pgvector`/`faiss` a **512-d**; sobre de eventos (`application/events`) y payload `candidate.generated` alineados a ADR-0011; `amqp_consumer` deprecado; wiring en `__main__`. **32 tests en verde** (23 previos + envelope/config/payload).
 
 - **Contratos formales 02-design**: `openapi.yaml` (OpenAPI 3.1 — 11 endpoints, 15 esquemas,
   seguridad bearer/JWT, errores RFC 7807, rate limit) y `asyncapi.yaml` (AsyncAPI 2.6 — 6 canales

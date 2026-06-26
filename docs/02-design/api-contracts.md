@@ -2,7 +2,7 @@
 
 - **Fase AI-DLC:** 02-design
 - **Estado:** draft
-- **Especificaciones:** [`openapi.yaml`](openapi.yaml) (REST, OpenAPI 3.1) · [`asyncapi.yaml`](asyncapi.yaml) (eventos AMQP, AsyncAPI 2.6)
+- **Especificaciones:** [`openapi.yaml`](openapi.yaml) (REST, OpenAPI 3.1) · [`asyncapi.yaml`](asyncapi.yaml) (eventos SQS/SNS, AsyncAPI 2.6)
 
 Toda la API exige autenticación (RS-01) y autorización por rol + scoping por clúster (RS-02). Las
 entradas se validan por esquema (RS-04). Las transiciones de estado quedan auditadas (RS-06).
@@ -35,7 +35,7 @@ entradas se validan por esquema (RS-04). Las transiciones de estado quedan audit
 
 | Método | Ruta | Descripción | AuthZ |
 | :---- | :---- | :---- | :---- |
-| `POST` | `/candidates/{id}/resolve` | Resuelve match manual (MATCHED/DISCARDED) con justificación + firma | Coordinador |
+| `POST` | `/candidates/{id}/resolve` | Resuelve match manual (MATCHED/DISCARDED) con justificación + firma → `match.resolved` | Coordinador |
 | `POST` | `/rescuers/{id}/certify` | Transición de certificación de rescatista (PENDING→CERTIFIED/REJECTED/REVOKED) | Coordinador/Autoridad |
 | `POST` | `/authorities` | Alta de autoridad en la cadena de confianza (cascada) | ADMIN / Celda regional |
 | `POST` | `/entities/{id}/release-info` | Autoriza notificación de información delicada (firma) | Autoridad |
@@ -46,10 +46,10 @@ entradas se validan por esquema (RS-04). Las transiciones de estado quedan audit
 | :---- | :---- | :---- |
 | Redes de mensajería | `POST /webhooks/{red}` | Mensajes entrantes (WhatsApp/IG/Messenger/Telegram); pasan por rieles |
 
-## Eventos (asíncronos, AMQP — patrón cola+worker)
+## Eventos (asíncronos, AWS SQS/SNS — patrón cola+worker, ADR-0012)
 
 Todos los eventos adoptan el **sobre común** ([ADR-0011](../00-project/adr/0011-contrato-eventos.md)):
-`event_id`, `event_type` (`dominio.evento`), `producer`, `timestamp`, `version` (semver), `payload`.
+`event_id`, `event_type` (`domain.event`), `producer`, `timestamp`, `version` (semver), `payload`.
 Cuerpos con PII/biométrico en JWE; el embedding no viaja inline (referencia a pgvector).
 
 | Evento | Productor → Consumidor | Descripción |
@@ -58,21 +58,19 @@ Cuerpos con PII/biométrico en JWE; el embedding no viaja inline (referencia a p
 | `report.ingested` | Worker → Matching | Adjuntos en almacén protegido; listo para resolver |
 | `candidate.generated` | Matching → Back office | Candidato con score; enruta por umbral |
 | `match.confirmed` | Coordinador/Sistema → Notificación | Match confirmado (humano ≥65 % o autoreporte 100 %) |
-| `match.resuelto` | Back office → Notificación + Auditoría | Resolución manual del coordinador (MATCHED/DISCARDED) con firma (ADR-0010) |
+| `match.resolved` | Back office → Notificación + Auditoría | Resolución manual del coordinador (MATCHED/DISCARDED) con firma (ADR-0010) |
 | `state.changed` | API → Notificación + Auditoría | Transición de estado (auditada) |
 | `notification.sent` | Notificación → Canal | Notificación entregada al clúster opt-in |
 
-> **Catálogo canónico (ADR-0011):** `reporte.creado` (≈ `report.received`/`report.ingested`),
-> `match.evaluado` (≈ `candidate.generated`), `match.resuelto` (nuevo), `notificacion.estado_cambiado`
-> (≈ `state.changed`/`notification.sent`). La unificación de nombres (ES vs EN) es decisión abierta en
-> ADR-0011.
+> **Catálogo canónico en inglés (ADR-0011):** `report.received`, `report.ingested`, `candidate.generated`,
+> `match.confirmed`, `match.resolved` (nuevo), `state.changed`, `notification.sent`.
 
 ## Especificaciones formales
 
 - **REST:** [`openapi.yaml`](openapi.yaml) — OpenAPI 3.1, 11 endpoints, 15 esquemas, seguridad
   bearer/JWT (RS-01), errores RFC 7807 (RS-04), rate limit 429 (RS-05).
-- **Eventos:** [`asyncapi.yaml`](asyncapi.yaml) — AsyncAPI 2.6, 6 canales AMQP (`report.received` …
-  `notification.sent`), payload del candidato alineado al motor (ADR-0004).
+- **Eventos:** [`asyncapi.yaml`](asyncapi.yaml) — AsyncAPI 2.6, canales SQS/SNS (`report.received` …
+  `notification.sent`, `match.resolved`), payload del candidato alineado al motor (ADR-0004/ADR-0013).
 
 ## Pendiente
 

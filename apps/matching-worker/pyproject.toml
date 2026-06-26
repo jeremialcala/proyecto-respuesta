@@ -1,17 +1,19 @@
 [project]
 name = "matching-worker"
 version = "0.1.0"
-description = "Motor de matching de Respuesta — pipeline facial (OpenCV YuNet+SFace), pgvector + FAISS, drift de edad y fusión multi-señal."
+description = "Motor de matching de Respuesta — pipeline facial ArcFace/IResNet100 (512-d), pgvector + FAISS, drift de edad; transporte AWS SQS/SNS."
 requires-python = ">=3.10"
 
 # Dependencias de runtime (los adaptadores las usan; el dominio puro NO depende de ellas).
 dependencies = [
     "numpy>=1.26",
-    "opencv-python>=4.9",      # YuNet (FaceDetectorYN) + SFace (FaceRecognizerSF)
-    "faiss-cpu>=1.8",          # IndexIDMap2(IndexHNSWFlat, M=32)
+    "insightface>=0.7",        # ArcFace/IResNet100 + detector SCRFD (ADR-0013)
+    "onnxruntime-gpu>=1.17",   # inferencia ArcFace en GPU RTX 3090 (ADR-0001/0006)
+    "opencv-python>=4.9",      # decodificación de imagen + fallback YuNet/SFace
+    "faiss-gpu>=1.8",          # IndexIDMap2(IndexHNSWFlat, M=32), d=512
     "psycopg[binary]>=3.1",    # pgvector (fuente de verdad)
     "pgvector>=0.2",
-    "pika>=1.3",               # AMQP (cola+worker)
+    "boto3>=1.34",             # AWS SQS/SNS (cola+worker, fan-out) — ADR-0012
 ]
 
 [project.optional-dependencies]

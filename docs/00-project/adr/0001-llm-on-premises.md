@@ -30,6 +30,13 @@ picos** sin perder mensajes; el throughput escala **horizontalmente** sumando wo
 Se documenta una **ruta de evolución**: si el throughput supera la zona cómoda de Ollama, migrar la
 capa de serving a **vLLM/TGI** (batching continuo) conservando el patrón cola+worker.
 
+**Hardware del MVP: una GPU NVIDIA RTX 3090 (24 GB) on-prem** (equipo propio — ADR-0006). Esa GPU se
+**comparte** con la inferencia de ArcFace del motor de matching (ADR-0013). Reparto de VRAM holgado:
+un LLM open **cuantizado de 7-14B** (Q4/Q5 ≈ 5-9 GB) + ArcFace IResNet100 (≈ 1-2 GB) + un modelo
+guardián pequeño para NeMo (ADR-0002) caben en 24 GB con margen. **Restricción**: es una **sola GPU**
+→ bajo el pico del desastre, LLM y matching compiten por cómputo; la **cola amortigua** y la latencia
+sube con elegancia, pero el escalado horizontal real exige más GPUs (crowdsourcing/sponsor, post-MVP).
+
 ## Alternativas consideradas
 
 | Opción | Pros | Contras | Riesgo de seguridad |

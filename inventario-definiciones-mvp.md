@@ -16,7 +16,8 @@
 Estado tras las decisiones (componentes 1-7 + contrato de eventos definidos):
 
 - ✅ **Sin bloqueantes.** Los 7 componentes funcionales y el contrato común de eventos (sección 9: `reporte.creado`, `match.evaluado`, `notificacion.estado_cambiado`) están definidos. Se puede paralelizar la implementación.
-- 🟡 **Flecos abiertos (no bloqueantes):** modelo/versión de embeddings, contenido de la plantilla HSM, proceso del resumen diario de jornada, TTL de deduplicación, canal/plantilla de notificaciones delicadas, evento `match.resuelto` (firma del coordinador), broker/versionado de eventos, scoring solo-rostro vs compuesto, offline-first y cumplimiento legal Venezuela.
+- ✅ **Decisiones de arranque cerradas (ADR-0012/0013):** broker **AWS SQS/SNS**; nombres de eventos en **inglés**; embeddings **ArcFace/IResNet100 (512-d)**; **scoring solo-rostro** en MVP; cloud **AWS** con GPU on-prem.
+- 🟡 **Flecos abiertos (no bloqueantes):** contenido de la plantilla HSM, proceso del resumen diario de jornada, TTL de deduplicación, canal/plantilla de notificaciones delicadas, recalibración de umbrales para ArcFace, offline-first y base legal LGPD/cumplimiento Venezuela.
 
 ---
 
@@ -30,7 +31,7 @@ Estado tras las decisiones (componentes 1-7 + contrato de eventos definidos):
 | Tipos de mensaje en MVP | ✅ Definido | Texto, imagen y ubicación. |
 | Plantillas (HSM) | ✅ Definido | Una sola plantilla aprobada. Falta redactar el contenido y enviarla a aprobación de Meta. |
 | Ventana de 24h | ✅ Definido (concepto) | Se mantiene abierta con notificaciones de anuncios generales de la jornada de rescate (resumen diario con indicadores). **Pendiente:** quién/qué genera ese resumen, qué indicadores incluye, horario y trigger del envío. |
-| Rate limits y backpressure | ✅ Definido | Cola SQS con alerta si un mensaje permanece en cola > 10 min. |
+| Rate limits y backpressure | ✅ Definido (ADR-0012) | **AWS SQS/SNS** (gestionado): colas SQS, fan-out SNS, DLQ por redrive; alerta si un mensaje permanece en cola > 10 min. |
 
 ---
 
@@ -39,7 +40,7 @@ Estado tras las decisiones (componentes 1-7 + contrato de eventos definidos):
 | Definición | Estado | Detalle |
 |---|---|---|
 | Esquema canónico del reporte | ✅ Definido | Esquema dinámico. **Obligatorios:** nombre completo, tipo de identificación, número de identificación. **Opcionales:** foto, última ubicación (coordenada o dirección), notas generales (p. ej. dolencias crónicas, medicamentos). Máquina de estados según `respuesta-state-machine`. |
-| Modelo de datos biométricos | ✅ Definido | Se almacena la foto original + los embeddings usados en verificación. **Pendiente:** modelo generador de embeddings y su versión (los embeddings no son compatibles entre versiones → versionar el campo). |
+| Modelo de datos biométricos | ✅ Definido (ADR-0013) | Foto original + embeddings **ArcFace / IResNet100 (512-d)**; campo versionado (`model=arcface`,`version=iresnet100`). Almacenamiento en pgvector (512-d). |
 | Clasificación y residencia | ✅ Definido (ADR-0006) | Toda la data tratada como sensible; cifrado con llaves individuales por usuario (Vault, ADR-0008); residencia en São Paulo (`sa-east-1`). Enmienda la región UE del ADR-0003 → LGPD con GDPR como listón interno; el cifrado por usuario pasa a ser la primera línea de blindaje. |
 | Retención y borrado | ✅ Definido | Programado al cierre de la labor de rescate (indicado por el coordinador) + 12 meses de retención; el coordinador puede diferirlo. |
 | Versionado / auditoría | ✅ Definido | Append-only en tabla inmutable para todas las operaciones, con verificación por SHA-256 (encadenamiento de hashes). |
@@ -65,9 +66,9 @@ Estado tras las decisiones (componentes 1-7 + contrato de eventos definidos):
 |---|---|---|
 | Algoritmo de similitud | ✅ Definido (alineado a ADR-0004) | Bandas: **< 65%** descarte; **65–85%** → revisión manual del coordinador; **> 85%** → fusión/enlace **solo con confirmación del coordinador** (el face-match nunca auto-confirma); **100% = autoreporte** → única vía automática. Reportes que matchean entre sí se unifican por persona; se avisa al que reporta que hay varios con el mismo reporte mostrando el opt-in de notificación a terceros; tras aceptación mutua se hace divulgación mutua. Menores/drift de edad → siempre a coordinador. |
 | Pipeline de matching | ✅ Definido | Streaming on-insert; ante registros nuevos de rescatistas se compara contra la base completa de embeddings. |
-| Combinación multi-señal | ✅ Definido | El match se hace por cara; la ubicación es información obligatoria del reporte (contexto, no scoring en MVP). |
+| Combinación multi-señal | ✅ Definido (ADR-0013) | **Scoring solo-rostro** en MVP (geo/texto peso 0); la ubicación es obligatoria como contexto para el coordinador. El marco de fusión queda para post-MVP. |
 | Manejo de N:M | ✅ Definido | Colisión de un rescatado con múltiples reportados como desaparecidos requiere intervención del coordinador para la notificación. |
-| Salida del match | ✅ Definido | > 85% → fusión con confirmación del coordinador y notificación a quienes reportaron; 65–85% → verificación por coordinador; 100% autoreporte automático. Estructura del evento en el contrato (`match.evaluado` / `match.resuelto`, ADR-0011). |
+| Salida del match | ✅ Definido | > 85% → fusión con confirmación del coordinador y notificación a quienes reportaron; 65–85% → verificación por coordinador; 100% autoreporte automático. Estructura del evento en el contrato (`match.evaluado` / `match.resolved`, ADR-0011). |
 
 ---
 
@@ -316,7 +317,7 @@ Todo evento comparte el mismo sobre; el `payload` varía según `event_type`.
 - **Canal del bot:** los ejemplos originales decían `BOT_TELEGRAM` / `BOT_OPERADOR_TELEGRAM`; se ajustó a WhatsApp para coherencia con la decisión del componente 1. Confirmar.
 - **Tipografía de campos:** unificar `contexto_fusion` / `score_fusion_final` (sin la "c" extra de los borradores) en el esquema canónico.
 - **Pesos multi-señal:** el evento `match.evaluado` ya incluye pesos rostro/geo/texto, lo que extiende la decisión "match solo por cara" del componente 4 hacia un scoring compuesto. Decidir si el MVP usa solo rostro (geo/texto en peso 0 o como contexto) o el compuesto completo.
-- **Falta el evento de resolución manual** (`match.resuelto` con decisión + firma del coordinador) para cerrar el ciclo de la sección 7.2.
+- **Falta el evento de resolución manual** (`match.resolved` con decisión + firma del coordinador) para cerrar el ciclo de la sección 7.2.
 - Definir el **broker/transporte** (SQS ya elegido para ingestión) y la **política de versionado** del campo `version`.
 
 ---
@@ -326,15 +327,12 @@ Todo evento comparte el mismo sobre; el `payload` varía según `event_type`.
 Las decisiones ya están formalizadas en **ADR-0006 a ADR-0011** (`docs/00-project/adr/`) y propagadas
 en cascada. Quedan como trabajo de implementación:
 
-1. **Publicar el contrato de eventos como artefacto del repo** (JSON Schema por evento) y resolver las
-   decisiones abiertas del [ADR-0011](docs/00-project/adr/0011-contrato-eventos.md): convención de
-   nombres (ES vs EN) y broker (SQS del inventario vs AMQP/RabbitMQ del diseño existente — el ADR
-   recomienda mantener AMQP).
-2. **Decidir scoring del MVP:** solo-rostro vs compuesto rostro/geo/texto (el evento `match.evaluado`
-   soporta pesos; ver [ADR-0004](docs/00-project/adr/0004-motor-de-matching.md)).
-3. **Cerrar los flecos abiertos:** modelo/versión de embeddings, contenido de la plantilla HSM,
-   proceso del resumen diario de jornada, TTL de deduplicación y canal/plantilla de las notificaciones
-   delicadas.
+1. **Implementar el contrato de eventos en inglés sobre SQS/SNS** (JSON Schema por evento, bindings
+   SQS/SNS en `asyncapi.yaml`) — [ADR-0011](docs/00-project/adr/0011-contrato-eventos.md)/[ADR-0012](docs/00-project/adr/0012-broker-aws-sqs-sns.md).
+2. **Reescribir el adaptador del matching-worker** a ArcFace/IResNet100 (512-d) y consumidor SQS, y
+   **recalibrar umbrales** para ArcFace — [ADR-0013](docs/00-project/adr/0013-arcface-scoring-solo-rostro.md).
+3. **Cerrar los flecos abiertos:** contenido de la plantilla HSM, proceso del resumen diario de
+   jornada, TTL de deduplicación y canal/plantilla de las notificaciones delicadas.
 4. **Definir transversales restantes:** estrategia offline-first por componente y base legal LGPD /
    cumplimiento Venezuela 2026 ([ADR-0006](docs/00-project/adr/0006-residencia-sao-paulo.md)).
 5. Avanzar a la implementación por componente apoyándose en los ADRs y los contratos OpenAPI/AsyncAPI.

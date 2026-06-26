@@ -1,6 +1,6 @@
 # ADR-0005: Ingestión de Meta asíncrona (Webhook Gateway delgado + Meta Handler + Worker de Bóveda)
 
-- **Estado:** accepted
+- **Estado:** accepted — **transporte enmendado por [ADR-0012](0012-broker-aws-sqs-sns.md)** (AMQP/RabbitMQ → AWS SQS/SNS; DLX → redrive a DLQ)
 - **Fecha:** 2026-06-25
 - **Decisores:** Jeremi
 - **Fase AI-DLC:** 02-design

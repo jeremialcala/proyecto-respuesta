@@ -11,7 +11,7 @@ from ..domain.models import FaceMap
 
 
 class FaceMapper(Protocol):
-    """Detecta rostros y genera embeddings (OpenCV YuNet + SFace)."""
+    """Detecta rostros y genera embeddings ArcFace/IResNet100 de 512-d (ADR-0013)."""
 
     def map_image(self, image_bytes: bytes) -> list[FaceMap]:
         """Un FaceMap por rostro detectado en una imagen."""
@@ -23,7 +23,7 @@ class FaceMapper(Protocol):
 
 
 class EmbeddingStore(Protocol):
-    """Fuente de verdad de los embeddings (pgvector). Soporta borrado real (GDPR)."""
+    """Fuente de verdad de los embeddings (pgvector, 512-d). Soporta borrado real (GDPR)."""
 
     def add_reference(self, entity_id: str, embedding: Sequence[float]) -> None: ...
     def delete_entity(self, entity_id: str) -> None: ...
@@ -31,7 +31,7 @@ class EmbeddingStore(Protocol):
 
 
 class AnnIndex(Protocol):
-    """Índice ANN en memoria (FAISS HNSW). Se refresca desde el EmbeddingStore."""
+    """Índice ANN en memoria (FAISS HNSW, d=512). Se refresca desde el EmbeddingStore."""
 
     def rebuild_from(self, store: EmbeddingStore) -> None: ...
     def search(self, embedding: Sequence[float], k: int) -> list[tuple[str, float]]:
@@ -40,6 +40,6 @@ class AnnIndex(Protocol):
 
 
 class EventBus(Protocol):
-    """Publicación de eventos (AMQP)."""
+    """Publicación de eventos sobre AWS SQS/SNS (ADR-0012); envuelve en el sobre estándar (ADR-0011)."""
 
     def publish(self, event: str, payload: dict) -> None: ...
