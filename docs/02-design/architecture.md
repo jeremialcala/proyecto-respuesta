@@ -32,7 +32,15 @@ superficies sensibles están marcados ahí.
 
 - [ADR-0001](../00-project/adr/0001-llm-on-premises.md) — LLM on-premises (Ollama + worker).
 - [ADR-0002](../00-project/adr/0002-nemo-guardrails-prompt-injection.md) — NeMo Guardrails.
-- [ADR-0003](../00-project/adr/0003-hosting-modelo-a.md) — Hosting Modelo A.
+- [ADR-0003](../00-project/adr/0003-hosting-modelo-a.md) — Hosting Modelo A (región enmendada por ADR-0006).
+- [ADR-0004](../00-project/adr/0004-motor-de-matching.md) — Motor de matching (OpenCV YuNet+SFace, drift).
+- [ADR-0005](../00-project/adr/0005-webhook-manager-vault-worker.md) — Ingestión de Meta asíncrona.
+- [ADR-0006](../00-project/adr/0006-residencia-sao-paulo.md) — Residencia de datos en São Paulo.
+- [ADR-0007](../00-project/adr/0007-esquema-reporte-retencion-auditoria.md) — Esquema del reporte, retención y auditoría SHA-256.
+- [ADR-0008](../00-project/adr/0008-boveda-llaves-identidad.md) — Bóveda de llaves por usuario e identidad (Vault).
+- [ADR-0009](../00-project/adr/0009-dashboard-auth-auth0.md) — Autenticación del portal (Auth0/OAuth2).
+- [ADR-0010](../00-project/adr/0010-back-office-roles-flujos.md) — Back office: roles y flujos.
+- [ADR-0011](../00-project/adr/0011-contrato-eventos.md) — Contrato común de eventos.
 
 ## Contratos de API
 

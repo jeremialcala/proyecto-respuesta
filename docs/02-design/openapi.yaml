@@ -10,7 +10,7 @@ info:
 
 servers:
   - url: https://api.respuesta.example/v1
-    description: Hosting Modelo A (UE / grado GDPR) — ADR-0003
+    description: Hosting Modelo A — región São Paulo (sa-east-1) — ADR-0003/ADR-0006
 
 tags:
   - name: reports
@@ -266,7 +266,9 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: JWT tras autenticación fuerte (MFA para actores acreditados — RS-01).
+      description: >-
+        JWT tras autenticación fuerte (MFA para actores acreditados — RS-01). El portal ciudadano
+        emite el JWT vía Auth0 (OAuth 2.0 / OIDC, social login) — ADR-0009.
 
   parameters:
     EntityId:

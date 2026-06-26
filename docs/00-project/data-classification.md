@@ -53,7 +53,14 @@ su jurisdicción.
   criterio aplica al **registro de notificación de fallecimiento**.
 - **Derecho al borrado**: un buscador o persona puede solicitar la eliminación de sus datos.
 - **Control de acceso**: activos Restringidos solo accesibles a actores acreditados y al clúster
-  verificado; sin reenvío libre del Proof-of-life.
+  verificado; sin reenvío libre del Proof-of-life. El acceso en claro del coordinador queda auditado
+  (ver abajo).
+- **Cifrado por usuario**: PII y medios se cifran con **llave por usuario** (DEK por sujeto envuelta
+  por KEK en HashiCorp Vault) — [ADR-0008](adr/0008-boveda-llaves-identidad.md). Comprometer el store
+  sin Vault no revela datos en claro (control técnico de primera línea tras la residencia regional).
+- **Auditoría append-only (SHA-256)**: toda operación sobre datos sensibles (incluido el acceso en
+  claro y el diferimiento de retención) se registra en una tabla inmutable con encadenamiento de
+  hashes — [ADR-0007](adr/0007-esquema-reporte-retencion-auditoria.md).
 - **Seudonimización** de logs y metadatos siempre que sea posible.
 
 ## Definición: cierre de la emergencia
@@ -69,22 +76,28 @@ en un registro auditable. El borrado se ejecuta automáticamente al cumplirse el
 
 ## Decisiones abiertas
 
-- `<TODO>` Encargado del tratamiento (procesador) y proveedor de hosting concreto, y jurisdicción
-  exacta de domicilio de la entidad.
-- `<TODO>` Mecanismo de transferencia transfronteriza para datos capturados en Venezuela hacia el
-  hosting UE (cláusulas contractuales / base legal de interés vital).
+- `<TODO>` Encargado del tratamiento (procesador) y proveedor de hosting concreto en `sa-east-1`.
+- `<TODO>` Base legal LGPD y mecanismo de transferencia para datos capturados en Venezuela hacia el
+  hosting de **São Paulo** (cláusulas contractuales / base legal de interés vital). Ver
+  [ADR-0006](adr/0006-residencia-sao-paulo.md).
 
-## Responsable del tratamiento y jurisdicción — **Decisión: Modelo A**
+## Responsable del tratamiento y jurisdicción — **Decisión: Modelo A (región enmendada)**
 
-> Formalizado en [ADR-0003](adr/0003-hosting-modelo-a.md).
+> Formalizado en [ADR-0003](adr/0003-hosting-modelo-a.md); **región enmendada a São Paulo** en
+> [ADR-0006](adr/0006-residencia-sao-paulo.md).
 
 
 **Adoptado:** operador humanitario internacional como responsable del tratamiento —entidad del
-proyecto domiciliada en una jurisdicción con protección de datos fuerte— con **hosting en nube de
-la UE (o región con adecuación GDPR)**. Razón: máxima protección legal y autonomía operativa,
-blindaje frente a compulsión/acceso del gobierno venezolano e infraestructura resiliente. La
-integración con autoridades se mantiene **solo** para acreditar rescatistas, no para custodiar
-datos. Marco legal local débil (Venezuela sin ley integral; solo habeas data Art. 28 + ARCO).
+proyecto domiciliada en una jurisdicción con protección de datos fuerte— con **hosting en São Paulo
+(`sa-east-1`, Brasil)**. Originalmente se decidió hosting en la UE (adecuación GDPR); la región se
+**enmendó a São Paulo** por menor latencia hacia Venezuela/diáspora y costo/disponibilidad de
+infraestructura. Implicación: residencia bajo **LGPD** (Brasil), con **GDPR como listón interno** —
+se siguen aplicando minimización, limitación de almacenamiento, cifrado y borrado al estándar GDPR
+aunque no sea la jurisdicción. Como el blindaje legal baja respecto a la UE, el **control técnico**
+(cifrado por usuario con bóveda Vault — [ADR-0008](adr/0008-boveda-llaves-identidad.md)) pasa a ser la
+primera línea contra exfiltración/compulsión. La integración con autoridades se mantiene **solo** para
+acreditar rescatistas, no para custodiar datos. Marco legal venezolano débil (sin ley integral; solo
+habeas data Art. 28 + ARCO).
 
 Alternativas consideradas y descartadas (registradas para trazabilidad):
 

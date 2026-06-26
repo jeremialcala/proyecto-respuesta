@@ -212,16 +212,22 @@ de reconstrucción, **+ 12 meses***. Se gestiona en la plataforma con fecha y ev
 
 **Responsable del tratamiento y jurisdicción** (Modelo A, decidido): operador humanitario
 internacional como responsable —entidad domiciliada en jurisdicción con protección fuerte— con
-hosting en nube UE / región con adecuación GDPR. El gobierno no custodia datos sensibles; solo se
-le integra para acreditar rescatistas. ICRC (Modelo D) queda como alianza a explorar en paralelo.
-Detalle, alternativas descartadas y consecuencias en `data-classification.md` y
-[ADR-0003](adr/0003-hosting-modelo-a.md).
+hosting en **São Paulo (`sa-east-1`)** (región enmendada respecto a la UE original por menor latencia
+hacia Venezuela/diáspora y costo; residencia bajo **LGPD** y **GDPR como listón interno**). El
+gobierno no custodia datos sensibles; solo se le integra para acreditar rescatistas. Con la
+residencia regional, el **control técnico** —cifrado por usuario con bóveda
+([ADR-0008](adr/0008-boveda-llaves-identidad.md))— pasa a ser la primera línea de blindaje. ICRC
+(Modelo D) queda como alianza a explorar en paralelo. Detalle, alternativas descartadas y
+consecuencias en `data-classification.md`, [ADR-0003](adr/0003-hosting-modelo-a.md) y
+[ADR-0006](adr/0006-residencia-sao-paulo.md).
 
 ## Arquitectura de despliegue (componentes)
 
 El stack detallado se cierra en fase `02-design`; los componentes acordados son:
 
-1. **Portal Web** — reporte y autoreporte; verificación de familiares/amigos desaparecidos.
+1. **Portal Web** — reporte y autoreporte; verificación de familiares/amigos desaparecidos. Auth con
+   **Auth0** (OAuth 2.0, social login), rol único en MVP; stack Nginx + NestJS + Redis + Postgres
+   (TypeScript). Ver [ADR-0009](adr/0009-dashboard-auth-auth0.md).
 2. **Chatbot (canal principal)** — opera a través de **WhatsApp, Instagram, Messenger y Telegram**
    sobre un **LLM on-premises** (sin proveedor externo: la conversación con PII no sale de la
    frontera; serving con Ollama + worker, ver [ADR-0001](adr/0001-llm-on-premises.md)) que conversa
@@ -235,8 +241,14 @@ El stack detallado se cierra en fase `02-design`; los componentes acordados son:
    haya conexión.
 3. **Back office** — registro de rescatistas; los coordinadores hacen la identificación real de
    las personas; las autoridades realizan las notificaciones delicadas a familiares verificados.
+   Matriz de roles, match manual con firma, certificación de rescatistas y validación jerárquica de
+   autoridades en [ADR-0010](adr/0010-back-office-roles-flujos.md).
 4. **Motor de matching (worker en segundo plano)** — implícito: ejecuta la resolución de entidades
    y la generación de candidatos en near-real-time que alimenta a los tres canales anteriores.
+
+Datos y eventos transversales: esquema del reporte, retención y auditoría append-only (SHA-256) en
+[ADR-0007](adr/0007-esquema-reporte-retencion-auditoria.md); contrato común de eventos en
+[ADR-0011](adr/0011-contrato-eventos.md).
 
 ## Decisiones abiertas (Human-in-the-Loop)
 

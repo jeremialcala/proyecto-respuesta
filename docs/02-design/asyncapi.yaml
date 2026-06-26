@@ -9,12 +9,16 @@ info:
     Los canales `inbound.*`/`media.stored`/`outbound.reply` modelan la ingestión de Meta del Gestor
     de Webhooks y el Worker de Bóveda (ADR-0005): texto al LLM on-prem, adjuntos a la bóveda cifrada.
     Los cuerpos con PII viajan cifrados en JWE.
+    Sobre común de eventos (ADR-0011): todo evento adopta `event_id`, `event_type` (`dominio.evento`),
+    `producer`, `timestamp`, `version` (semver) y `payload`. Catálogo canónico del flujo central:
+    `reporte.creado`, `match.evaluado`, `match.resuelto`, `notificacion.estado_cambiado` (los nombres
+    actuales `report.*`/`candidate.*`/`state.*` se migran a esa convención — ver ADR-0011).
 
 servers:
   broker:
     url: amqp://broker.respuesta.internal:5672
     protocol: amqp
-    description: Broker AMQP (hosting Modelo A — ADR-0003)
+    description: Broker AMQP — RabbitMQ (hosting Modelo A, São Paulo sa-east-1 — ADR-0003/ADR-0006)
 
 defaultContentType: application/json
 
@@ -89,6 +93,14 @@ channels:
     publish:
       operationId: onMatchConfirmed
       message: { $ref: '#/components/messages/MatchConfirmed' }
+  match.resuelto:
+    description: >-
+      Resolución manual de un candidato por el coordinador desde el back office (ADR-0010): MATCHED o
+      DISCARDED, con justificación y firma. Cierra el ciclo del match manual y alimenta la auditoría
+      SHA-256 (ADR-0007/ADR-0011).
+    publish:
+      operationId: onMatchResuelto
+      message: { $ref: '#/components/messages/MatchResuelto' }
   state.changed:
     description: Transición de estado (auditada).
     publish:
@@ -132,6 +144,9 @@ components:
     MatchConfirmed:
       name: MatchConfirmed
       payload: { $ref: '#/components/schemas/MatchConfirmed' }
+    MatchResuelto:
+      name: MatchResuelto
+      payload: { $ref: '#/components/schemas/MatchResuelto' }
     StateChanged:
       name: StateChanged
       payload: { $ref: '#/components/schemas/StateChanged' }
@@ -268,6 +283,17 @@ components:
         entity_id: { type: string, format: uuid }
         confirmed_by: { type: string, description: coordinador | autoreporte }
         confirmed_at: { type: string, format: date-time }
+    MatchResuelto:
+      type: object
+      description: 'Decisión manual del coordinador sobre un candidato (ADR-0010/ADR-0011).'
+      required: [match_id, decision, coordinador_id]
+      properties:
+        match_id: { type: string, format: uuid }
+        decision: { type: string, enum: [MATCHED, DISCARDED] }
+        coordinador_id: { type: string, description: 'Usuario+ID del coordinador que firma.' }
+        justificacion: { type: string }
+        firma: { type: string, description: 'Firma de la decisión (no repudio).' }
+        resolved_at: { type: string, format: date-time }
     StateChanged:
       type: object
       required: [entity_id, to_state, mechanism, actor, at]

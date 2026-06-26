@@ -3,9 +3,10 @@
 > **C4 — Container view · AI-DLC Fase 02 (Design)**
 >
 > Las unidades desplegables dentro del sistema y cómo se comunican. Todo vive bajo el hosting del
-> Modelo A (UE). La zona de datos restringidos (almacén de medios, motor de matching, almacén de
-> entidades) se marca como trust boundary interno. En rojo: superficies sensibles (biométricos,
-> autenticación, modelo facial, SAIME).
+> Modelo A, **región São Paulo (`sa-east-1`)** (región enmendada por
+> [ADR-0006](../00-project/adr/0006-residencia-sao-paulo.md)). La zona de datos restringidos (almacén
+> de medios, motor de matching, almacén de entidades) se marca como trust boundary interno. En rojo:
+> superficies sensibles (biométricos, autenticación, modelo facial, SAIME).
 
 ```mermaid
 C4Container
@@ -16,7 +17,7 @@ C4Container
     Person(coordinador, "Coordinador", "Identifica y confirma")
     Person(autoridad, "Autoridad civil/médica", "Confirma fallecimiento")
 
-    System_Boundary(sys, "Respuesta — hosting UE (Modelo A)") {
+    System_Boundary(sys, "Respuesta — hosting São Paulo sa-east-1 (Modelo A)") {
         Container(web, "Portal Web", "SPA", "Reporte/autoreporte, verificación, opt-in, reproducción de proof-of-life")
         Container(edge, "Edge / Reverse proxy", "TLS, WAF", "Endpoint público que reciben los webhooks de Meta; termina TLS y limita tasa")
         Container(webhook, "Webhook Gateway de Meta", "Servicio FastAPI", "Borde sin estado: verifica firma, dedup y ACK; publica SOLO el payload crudo a meta.received (no toca workers)")
@@ -30,7 +31,7 @@ C4Container
         ContainerQueue(queue, "Broker AMQP", "RabbitMQ", "Cola offline-first + meta.received/inbound.text/inbound.media/media.stored/outbound.reply; cada cola con DLX→.dlq y reintentos")
         ContainerDb(idem, "Store de idempotencia", "Redis", "Dedup de reintentos de Meta y rate de tokens")
         ContainerDb(eventstore, "Store de eventos", "BD", "Event + EventAction: trazado por pasos (auditoría)")
-        Container(secrets, "Secrets manager", "Vault/KMS", "Tokens de Meta, claves JWE y de cifrado de bóveda")
+        Container(secrets, "Secrets manager", "HashiCorp Vault", "Tokens de Meta, claves JWE y KEK por usuario (cifrado de bóveda) — ADR-0008")
 
         Boundary(restringida, "Zona de datos restringidos", "trust-boundary") {
             Container(vault, "Worker de Control de Bóveda", "Worker", "Descarga, escanea (AV/CSAM), cifra (sobre+KMS) y persiste los adjuntos de Meta")

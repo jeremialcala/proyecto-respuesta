@@ -1,11 +1,16 @@
 # ADR-0003: Hosting y responsable del tratamiento — Modelo A
 
-- **Estado:** accepted
+- **Estado:** accepted — **región enmendada por [ADR-0006](0006-residencia-sao-paulo.md)** (UE → São Paulo)
 - **Fecha:** 2026-06-25
 - **Decisores:** Jeremi
 - **Fase AI-DLC:** 02-design
 - **Controles OWASP afectados:** A01 (access control), A02 (misconfiguration), A04 (cryptographic/data), A09 (logging)
-- **Relacionado:** [ADR-0001](0001-llm-on-premises.md), `data-classification.md`, charter
+- **Relacionado:** [ADR-0001](0001-llm-on-premises.md), [ADR-0006](0006-residencia-sao-paulo.md), `data-classification.md`, charter
+
+> **Nota de enmienda (2026-06-26):** el **modelo de responsable** (operador humanitario
+> internacional, gobierno fuera de la custodia) sigue vigente. La **región de hosting** se cambió de
+> "UE / adecuación GDPR" a **São Paulo (`sa-east-1`)** en [ADR-0006](0006-residencia-sao-paulo.md);
+> GDPR se conserva como **listón interno**, no como jurisdicción. Léase este ADR con esa enmienda.
 
 ## Contexto
 

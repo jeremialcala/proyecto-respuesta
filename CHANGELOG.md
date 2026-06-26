@@ -12,6 +12,26 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
 
 ### Added
 
+- **ADR-0006 a ADR-0011** (`docs/00-project/adr/`): residencia en São Paulo (0006, enmienda la región
+  del 0003); esquema dinámico del reporte + retención + auditoría append-only SHA-256 (0007); bóveda de
+  llaves por usuario con HashiCorp Vault + identidad WhatsApp+email/KYC (0008); auth del portal con
+  Auth0/OAuth2 (0009); back office — roles, match manual con firma, certificación de rescatistas y
+  validación jerárquica de autoridades (0010); contrato común de eventos con sobre estándar (0011).
+- **Inventario de definiciones del MVP** (`inventario-definiciones-mvp.md`): componentes 1-7 + contrato
+  de eventos, con estado definido/pendiente por componente.
+
+### Changed
+
+- **Residencia de datos: UE → São Paulo (`sa-east-1`)** propagada en cascada a charter,
+  `data-classification.md`, `threat-model.md` (T4/T7), `architecture.md`, `openapi.yaml`,
+  `asyncapi.yaml` y C4 de contenedores. GDPR pasa a ser listón interno (residencia bajo LGPD); el
+  cifrado por usuario (Vault, ADR-0008) se vuelve la primera línea de blindaje.
+- **Secrets manager concretado a HashiCorp Vault** (ADR-0005 "KMS" → ADR-0008) en C4 y docs.
+- **Eventos**: sobre común (ADR-0011) y nuevo `match.resuelto` añadidos a `asyncapi.yaml`,
+  `api-contracts.md`; endpoints de portal y back office añadidos a `api-contracts.md`.
+- **Glosario**: términos de plataforma/eventos (Bóveda, Cifrado por usuario, Auditoría append-only,
+  Certificación de rescatista, Cadena de confianza, Match manual, Sobre de evento).
+
 - **Contratos formales 02-design**: `openapi.yaml` (OpenAPI 3.1 — 11 endpoints, 15 esquemas,
   seguridad bearer/JWT, errores RFC 7807, rate limit) y `asyncapi.yaml` (AsyncAPI 2.6 — 6 canales
   AMQP, payload del candidato alineado a ADR-0004). YAML validado; resuelve los TODO de `api-contracts.md`.

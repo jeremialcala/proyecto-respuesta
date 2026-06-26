@@ -17,7 +17,7 @@ C4Context
     Person(autoridad, "Autoridad civil/médica", "Única fuente de gravedad/fallecimiento")
     Person(mediador, "Mediador", "Gestiona notificaciones delicadas")
 
-    Enterprise_Boundary(b1, "Operador humanitario internacional — Modelo A (hosting UE)") {
+    Enterprise_Boundary(b1, "Operador humanitario internacional — Modelo A (hosting São Paulo sa-east-1)") {
         System(respuesta, "Respuesta", "Cruza reportes dispersos en entidades-persona; genera y confirma matches; notifica")
     }
 

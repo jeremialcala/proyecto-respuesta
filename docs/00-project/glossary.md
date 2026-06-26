@@ -78,6 +78,18 @@ se marca para evitar ambigüedad.
 | **Federación** | Intercambio de registros con repositorios externos (ICRC Trace the Face / MPDM, etc.) sin crear un silo. | Vía PFIF. |
 | **Store-and-forward** | Patrón offline-first: capturar sin conexión, encolar y sincronizar al recuperar señal. | Crítico para el video en zona de apagón. |
 
+### Plataforma, datos y eventos
+
+| Término | Definición | Notas |
+| :---- | :---- | :---- |
+| **Bóveda** | Almacén de medios cifrado (fotos/audio/video + embeddings) dentro de la zona restringida. | Worker de Control de Bóveda (ADR-0005). |
+| **Cifrado por usuario** | Esquema de sobre: una DEK por sujeto cifra sus datos; la DEK se envuelve con una KEK en Vault. | ADR-0008; primera línea técnica tras residencia São Paulo. |
+| **Auditoría append-only** | Tabla inmutable con encadenamiento SHA-256 de toda operación sensible; manipulación detectable. | ADR-0007; sostiene el no repudio (RS-06). |
+| **Certificación de rescatista** | Ciclo `PENDING → CERTIFIED → REVOKED` / `REJECTED` con activación por token JWT. | ADR-0010. |
+| **Cadena de confianza (autoridades)** | Validación jerárquica en cascada: ADMIN raíz → celdas regionales → nodos locales. | ADR-0010. |
+| **Match manual** | Resolución de un candidato por el coordinador (MATCHED/DISCARDED) con justificación y firma. | Emite `match.resuelto` (ADR-0010/0011). |
+| **Sobre de evento** | Metadata común de todo evento: `event_id`, `event_type`, `producer`, `timestamp`, `version`, `payload`. | ADR-0011. |
+
 ## Reglas de uso del lenguaje
 
 - **Reporte ≠ Persona ≠ Entidad-persona.** Un reporte es una pista; varias pistas forman una
