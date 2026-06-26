@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: respuesta
+  labels:
+    app.kubernetes.io/part-of: respuesta
+    pod-security.kubernetes.io/enforce: restricted

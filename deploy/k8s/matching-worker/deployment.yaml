@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matching-worker
+  labels: {app.kubernetes.io/name: matching-worker, app.kubernetes.io/part-of: respuesta}
+spec:
+  replicas: 1   # GPU-bound; el escalado lo gobierna KEDA (scaledobject.yaml)
+  selector:
+    matchLabels: {app.kubernetes.io/name: matching-worker}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: matching-worker}
+    spec:
+      serviceAccountName: matching-worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      # Nodos con GPU NVIDIA (g4dn/g5 en EKS, o nodo on-prem RTX 3090 vía nodo híbrido).
+      nodeSelector: {"nvidia.com/gpu.present": "true"}
+      tolerations: [{key: "nvidia.com/gpu", operator: "Exists", effect: "NoSchedule"}]
+      containers:
+        - name: matching-worker
+          image: respuesta/matching-worker:0.1.0
+          envFrom:
+            - configMapRef: {name: matching-worker-config}
+            - secretRef: {name: matching-worker-secrets}   # PGVECTOR_DSN, etc. (External Secrets)
+          resources:
+            requests: {cpu: "1", memory: 2Gi, nvidia.com/gpu: 1}
+            limits:   {cpu: "2", memory: 4Gi, nvidia.com/gpu: 1}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: models, emptyDir: {}}   # cache de pesos InsightFace (init/descarga); o PVC/EFS
+        - {name: tmp, emptyDir: {}}

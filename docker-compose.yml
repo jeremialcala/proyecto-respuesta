@@ -1,0 +1,85 @@
+# Respuesta — entorno de desarrollo local (ADR-0014).
+# Levanta dependencias gestionadas como locales: Postgres+pgvector, Redis y LocalStack (SQS/SNS),
+# más los servicios de la plataforma. En AWS, estas dependencias son RDS, ElastiCache y SQS/SNS
+# reales; aquí se emulan para iterar sin nube. El matching-worker requiere GPU → perfil "gpu".
+name: respuesta
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: respuesta
+      POSTGRES_PASSWORD: respuesta
+      POSTGRES_DB: respuesta
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U respuesta"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  localstack:
+    image: localstack/localstack:3
+    environment:
+      SERVICES: sqs,sns
+      DEBUG: "0"
+    ports: ["4566:4566"]
+    volumes:
+      - "./deploy/localstack/init:/etc/localstack/init/ready.d:ro"
+    healthcheck:
+      test: ["CMD-SHELL", "awslocal sqs list-queues >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  webhook-gateway:
+    build: ./apps/webhook-gateway
+    depends_on:
+      redis: {condition: service_healthy}
+      localstack: {condition: service_healthy}
+    environment:
+      AWS_REGION: sa-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      REDIS_URL: redis://redis:6379/0
+      SQS_RAW_QUEUE_URL: http://localstack:4566/000000000000/meta-received
+      META_BOT_ID: ${META_BOT_ID:-bot-dev}
+      META_VERIFY_TOKEN: ${META_VERIFY_TOKEN:-verify-dev}
+      META_APP_SECRET: ${META_APP_SECRET:-app-secret-dev}
+    ports: ["8080:8080"]
+
+  matching-worker:
+    build: ./apps/matching-worker
+    profiles: ["gpu"]   # requiere NVIDIA Container Toolkit; omitido en `up` por defecto
+    depends_on:
+      postgres: {condition: service_healthy}
+      localstack: {condition: service_healthy}
+    environment:
+      AWS_REGION: sa-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      PGVECTOR_DSN: postgresql://respuesta:respuesta@postgres:5432/respuesta
+      SQS_INPUT_QUEUE_URL: http://localstack:4566/000000000000/report-ingested
+      SNS_OUTPUT_TOPIC_ARN: arn:aws:sns:sa-east-1:000000000000:candidate-generated
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: ["gpu"]
+
+volumes:
+  pgdata:

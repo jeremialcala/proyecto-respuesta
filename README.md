@@ -62,7 +62,9 @@ documentos:
 .ai-dlc/
 ├── gates/                      Checklists Gate 0 (✅) y Gate 1 (✅ con deuda)
 └── templates/                  Plantillas reutilizables: prd, threat-model, adr
-apps/                           Servicios ejecutables (api, chatbot, matching-worker, llm) — scaffolding
+apps/                           Servicios: matching-worker (ArcFace) y webhook-gateway (ingestión Meta) implementados; resto scaffolding
+deploy/                         Despliegue (ADR-0014): k8s/ (kustomize EKS) + localstack/ (init dev)
+docker-compose.yml              Dev local: postgres+pgvector, redis, localstack (SQS/SNS), servicios
 docs/
 ├── 00-project/
 │   ├── charter.md              Visión, alcance, estados, restricciones, riesgos
@@ -73,6 +75,7 @@ docs/
 │                                   0007 esquema/retención/auditoría · 0008 bóveda Vault/identidad
 │                                   0009 auth Auth0 · 0010 back office · 0011 contrato de eventos
 │                                   0012 broker AWS SQS/SNS · 0013 ArcFace 512-d + scoring solo-rostro
+│                                   0014 contenedores OCI + despliegue EKS/AWS
 ├── 01-requirements/
 │   └── flujo-central.md        PRD: reporte→match→confirmación→notificación (Gate 0)
 ├── 02-design/
@@ -100,8 +103,9 @@ docs/
 | 00 · Project | — | ✅ Charter, glosario, clasificación de datos |
 | 01 · Requirements | Gate 0 | ✅ PRD del flujo central con escenarios de abuso y OWASP |
 | 02 · Design | Gate 1 | ✅ C4, threat model STRIDE/DREAD, **ADR-0001…0013** y contratos OpenAPI/AsyncAPI (deuda documentada) |
-| 03 · Implementation | Gate 2 | 🚧 `apps/matching-worker`: dominio + adaptadores **ArcFace/SQS/SNS/pgvector/FAISS** (512-d), sobre de eventos; **32 tests en verde** (afinado con infra real pendiente) |
-| 04-06 | Gates 3-5 | ⬜ Pendiente (estructura creada) |
+| 03 · Implementation | Gate 2 | 🚧 `apps/matching-worker` (ArcFace/SQS/SNS/pgvector/FAISS 512-d, **32 tests**) + `apps/webhook-gateway` (ingestión Meta: firma + idempotencia + publica `meta.received`, **15 tests**). Afinado con infra real pendiente |
+| 05 · Deployment | Gate 4 | 🚧 Apps **container-ready**: Dockerfiles, `docker-compose` (dev) y `deploy/k8s` para EKS (IRSA, ALB+HPA, KEDA, GPU) — ADR-0014. CI/CD e IaC pendientes |
+| 04 · Testing / 06 · Monitoring | Gates 3, 5 | ⬜ Pendiente (estructura creada) |
 
 Los cambios se registran en [CHANGELOG.md](CHANGELOG.md) (formato Keep a Changelog 1.1.0 +
 Versionado Semántico). Versión actual: **0.1.0**.

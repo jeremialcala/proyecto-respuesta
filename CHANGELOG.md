@@ -12,6 +12,12 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
 
 ### Added
 
+- **ADR-0014 + artefactos de despliegue** (`docs/00-project/adr/0014-contenedores-despliegue-eks.md`,
+  `deploy/`): todas las apps **container-ready**. `Dockerfile` no-root por servicio (gateway
+  python-slim; matching base CUDA para GPU); **`docker-compose.yml`** con Postgres+pgvector, Redis y
+  LocalStack (SQS/SNS) para dev local; **`deploy/k8s`** (kustomize) para EKS con IRSA por workload,
+  Ingress ALB + HPA (gateway), KEDA por profundidad de cola + nodos GPU (matching), Pod Security
+  restricted y secretos vía External Secrets. YAML validado.
 - **ADR-0012 y ADR-0013** (`docs/00-project/adr/`): broker de mensajería **AWS SQS/SNS** (0012,
   enmienda el transporte AMQP de ADR-0005/0011); **motor de embedding ArcFace/IResNet100 (512-d) y
   scoring solo-rostro en MVP** (0013, enmienda ADR-0004). Resueltas las decisiones de arranque:
@@ -42,6 +48,7 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
   reflejado en inventario y contratos; recalibración de umbrales pendiente (fase 04).
 - **Hardware del MVP fijado: NVIDIA RTX 3090 (24 GB) on-prem**, compartida por el LLM (ADR-0001) y ArcFace (ADR-0013); registrado en ADR-0001/0006/0013.
 - **`apps/matching-worker` reescrito a ArcFace + SQS/SNS** (ADR-0012/0013): adaptadores `arcface_facemapper`, `sqs_consumer`, `sqs_sns_event_bus`; `pgvector`/`faiss` a **512-d**; sobre de eventos (`application/events`) y payload `candidate.generated` alineados a ADR-0011; `amqp_consumer` deprecado; wiring en `__main__`. **32 tests en verde** (23 previos + envelope/config/payload).
+- **`apps/webhook-gateway` nuevo (ingestión Meta, fase 03)**: Webhook Gateway de [ADR-0005](docs/00-project/adr/0005-webhook-manager-vault-worker.md) sobre SQS — verificación handshake, firma `X-Hub-Signature-256`, idempotencia por `wamid.` (Redis) y publicación del crudo a `meta.received` (sobre ADR-0011). Clean Architecture/DDD; FastAPI + adaptadores Redis/SQS con deps perezosas. **15 tests en verde** (firma, payload, servicio con fakes).
 
 - **Contratos formales 02-design**: `openapi.yaml` (OpenAPI 3.1 — 11 endpoints, 15 esquemas,
   seguridad bearer/JWT, errores RFC 7807, rate limit) y `asyncapi.yaml` (AsyncAPI 2.6 — 6 canales

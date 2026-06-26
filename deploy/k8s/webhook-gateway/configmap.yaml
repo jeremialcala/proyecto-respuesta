@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webhook-gateway-config
+data:
+  AWS_REGION: "sa-east-1"
+  SQS_RAW_QUEUE_URL: "https://sqs.sa-east-1.amazonaws.com/ACCOUNT_ID/meta-received"
+  REDIS_URL: "redis://respuesta-redis.xxxx.ng.0001.sae1.cache.amazonaws.com:6379/0"
+  IDEMPOTENCY_TTL: "86400"

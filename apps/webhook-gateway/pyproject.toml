@@ -1,0 +1,27 @@
+[project]
+name = "webhook-gateway"
+version = "0.1.0"
+description = "Webhook Gateway de Meta (Respuesta) — borde sin estado: verifica firma, deduplica y publica el crudo a SQS (ADR-0005/0012)."
+requires-python = ">=3.10"
+
+# Runtime. El dominio y la aplicación NO dependen de estas (solo los adaptadores/API).
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "boto3>=1.34",            # publica meta.received en SQS (ADR-0012)
+    "redis>=5.0",             # guarda de idempotencia por message_id
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.4"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

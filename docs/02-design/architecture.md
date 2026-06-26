@@ -41,6 +41,9 @@ superficies sensibles están marcados ahí.
 - [ADR-0009](../00-project/adr/0009-dashboard-auth-auth0.md) — Autenticación del portal (Auth0/OAuth2).
 - [ADR-0010](../00-project/adr/0010-back-office-roles-flujos.md) — Back office: roles y flujos.
 - [ADR-0011](../00-project/adr/0011-contrato-eventos.md) — Contrato común de eventos.
+- [ADR-0012](../00-project/adr/0012-broker-aws-sqs-sns.md) — Broker de mensajería AWS SQS/SNS.
+- [ADR-0013](../00-project/adr/0013-arcface-scoring-solo-rostro.md) — ArcFace 512-d + scoring solo-rostro.
+- [ADR-0014](../00-project/adr/0014-contenedores-despliegue-eks.md) — Contenedores OCI y despliegue EKS/AWS.
 
 ## Contratos de API
 

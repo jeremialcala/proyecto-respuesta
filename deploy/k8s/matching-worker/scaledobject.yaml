@@ -1,0 +1,19 @@
+# KEDA: escala el worker por profundidad de la cola SQS report-ingested (ADR-0012).
+# GPU on-prem (1x RTX 3090) → maxReplicaCount conservador; en EKS con nodos GPU puede subir.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: matching-worker
+spec:
+  scaleTargetRef: {name: matching-worker}
+  minReplicaCount: 1
+  maxReplicaCount: 3
+  cooldownPeriod: 120
+  triggers:
+    - type: aws-sqs-queue
+      authenticationRef: {name: keda-aws-irsa}
+      metadata:
+        queueURL: https://sqs.sa-east-1.amazonaws.com/ACCOUNT_ID/report-ingested
+        queueLength: "20"
+        awsRegion: sa-east-1
+        identityOwner: operator

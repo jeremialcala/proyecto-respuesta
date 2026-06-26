@@ -23,6 +23,9 @@ test = ["pytest>=7.4"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
