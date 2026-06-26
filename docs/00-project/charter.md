@@ -1,7 +1,7 @@
 # Charter — Respuesta
 
 > Proyecto: **Respuesta** · Fase AI-DLC: `00-project` · Estado: borrador vivo
-> Última actualización: 2026-06-25
+> Última actualización: 2026-06-26
 
 ## Visión en una frase
 
@@ -246,9 +246,13 @@ El stack detallado se cierra en fase `02-design`; los componentes acordados son:
 4. **Motor de matching (worker en segundo plano)** — implícito: ejecuta la resolución de entidades
    y la generación de candidatos en near-real-time que alimenta a los tres canales anteriores.
 
-Datos y eventos transversales: esquema del reporte, retención y auditoría append-only (SHA-256) en
+El **motor de matching** usa **ArcFace/IResNet100 (512-d)** con scoring solo-rostro en el MVP
+([ADR-0013](adr/0013-arcface-scoring-solo-rostro.md)). La mensajería entre componentes corre sobre
+**AWS SQS/SNS** ([ADR-0012](adr/0012-broker-aws-sqs-sns.md)). Datos y eventos transversales: esquema
+del reporte, retención y auditoría append-only (SHA-256) en
 [ADR-0007](adr/0007-esquema-reporte-retencion-auditoria.md); contrato común de eventos en
-[ADR-0011](adr/0011-contrato-eventos.md).
+[ADR-0011](adr/0011-contrato-eventos.md). Hosting en AWS São Paulo `sa-east-1`
+([ADR-0006](adr/0006-residencia-sao-paulo.md)); GPU on-prem RTX 3090 para el MVP.
 
 ## Decisiones abiertas (Human-in-the-Loop)
 
