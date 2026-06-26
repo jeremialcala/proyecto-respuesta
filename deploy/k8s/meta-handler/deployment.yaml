@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: meta-handler
+  labels: {app.kubernetes.io/name: meta-handler, app.kubernetes.io/part-of: respuesta}
+spec:
+  replicas: 1   # escala por cola vía KEDA (scaledobject.yaml)
+  selector:
+    matchLabels: {app.kubernetes.io/name: meta-handler}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: meta-handler}
+    spec:
+      serviceAccountName: meta-handler
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: meta-handler
+          image: respuesta/meta-handler:0.1.0
+          envFrom:
+            - configMapRef: {name: meta-handler-config}
+            - secretRef: {name: meta-handler-secrets}   # claves JWE/Vault (External Secrets)
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]

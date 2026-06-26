@@ -1,0 +1,30 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ConsumeOutboundReplyQueue",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes",
+        "sqs:ChangeMessageVisibility"
+      ],
+      "Resource": "arn:aws:sqs:sa-east-1:ACCOUNT_ID:respuesta-outbound-reply",
+      "Condition": {
+        "StringEquals": { "aws:RequestedRegion": "sa-east-1" }
+      }
+    },
+    {
+      "Sid": "ReadGraphApiToken",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": "arn:aws:secretsmanager:sa-east-1:ACCOUNT_ID:secret:respuesta/meta/graph-token-*",
+      "Condition": {
+        "StringEquals": { "aws:RequestedRegion": "sa-east-1" }
+      }
+    }
+  ]
+}

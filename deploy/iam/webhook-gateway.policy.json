@@ -1,0 +1,30 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublishRawMetaPayload",
+      "Effect": "Allow",
+      "Action": [
+        "sns:Publish"
+      ],
+      "Resource": "arn:aws:sns:sa-east-1:ACCOUNT_ID:respuesta-meta-received",
+      "Condition": {
+        "StringEquals": { "aws:RequestedRegion": "sa-east-1" }
+      }
+    },
+    {
+      "Sid": "ReadWebhookSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:sa-east-1:ACCOUNT_ID:secret:respuesta/meta/verify-token-*",
+        "arn:aws:secretsmanager:sa-east-1:ACCOUNT_ID:secret:respuesta/meta/hmac-key-*"
+      ],
+      "Condition": {
+        "StringEquals": { "aws:RequestedRegion": "sa-east-1" }
+      }
+    }
+  ]
+}

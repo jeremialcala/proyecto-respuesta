@@ -1,0 +1,54 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ConsumeInboundMedia",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes",
+        "sqs:ChangeMessageVisibility"
+      ],
+      "Resource": "arn:aws:sqs:sa-east-1:ACCOUNT_ID:respuesta-inbound-media",
+      "Condition": {
+        "StringEquals": { "aws:RequestedRegion": "sa-east-1" }
+      }
+    },
+    {
+      "Sid": "WriteEncryptedMediaObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject"
+      ],
+      "Resource": "arn:aws:s3:::respuesta-media/encrypted/*",
+      "Condition": {
+        "StringEquals": { "aws:RequestedRegion": "sa-east-1" }
+      }
+    },
+    {
+      "Sid": "EnvelopeEncryptMedia",
+      "Effect": "Allow",
+      "Action": [
+        "kms:GenerateDataKey",
+        "kms:Decrypt"
+      ],
+      "Resource": "arn:aws:kms:sa-east-1:ACCOUNT_ID:key/KEY_ID_MEDIA",
+      "Condition": {
+        "StringEquals": { "aws:RequestedRegion": "sa-east-1" }
+      }
+    },
+    {
+      "Sid": "PublishMediaStored",
+      "Effect": "Allow",
+      "Action": [
+        "sns:Publish"
+      ],
+      "Resource": "arn:aws:sns:sa-east-1:ACCOUNT_ID:respuesta-media-stored",
+      "Condition": {
+        "StringEquals": { "aws:RequestedRegion": "sa-east-1" }
+      }
+    }
+  ]
+}

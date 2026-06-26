@@ -1,0 +1,62 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadAppSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:sa-east-1:ACCOUNT_ID:secret:respuesta/auth0-*",
+        "arn:aws:secretsmanager:sa-east-1:ACCOUNT_ID:secret:respuesta/db-*",
+        "arn:aws:secretsmanager:sa-east-1:ACCOUNT_ID:secret:respuesta/redis-*"
+      ],
+      "Condition": {
+        "StringEquals": { "aws:RequestedRegion": "sa-east-1" }
+      }
+    },
+    {
+      "Sid": "MediaAccessForCoordinators",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::respuesta-media/encrypted/*",
+      "Condition": {
+        "StringEquals": { "aws:RequestedRegion": "sa-east-1" }
+      }
+    },
+    {
+      "Sid": "DecryptPiiInClear",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt"
+      ],
+      "Resource": [
+        "arn:aws:kms:sa-east-1:ACCOUNT_ID:key/KEY_ID_PII",
+        "arn:aws:kms:sa-east-1:ACCOUNT_ID:key/KEY_ID_MEDIA"
+      ],
+      "Condition": {
+        "StringEquals": { "aws:RequestedRegion": "sa-east-1" }
+      }
+    },
+    {
+      "Sid": "PublishDomainEvents",
+      "Effect": "Allow",
+      "Action": [
+        "sns:Publish"
+      ],
+      "Resource": [
+        "arn:aws:sns:sa-east-1:ACCOUNT_ID:respuesta-match-confirmed",
+        "arn:aws:sns:sa-east-1:ACCOUNT_ID:respuesta-match-resolved",
+        "arn:aws:sns:sa-east-1:ACCOUNT_ID:respuesta-state-changed",
+        "arn:aws:sns:sa-east-1:ACCOUNT_ID:respuesta-notification-sent"
+      ],
+      "Condition": {
+        "StringEquals": { "aws:RequestedRegion": "sa-east-1" }
+      }
+    }
+  ]
+}

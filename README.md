@@ -62,7 +62,7 @@ documentos:
 .ai-dlc/
 ├── gates/                      Checklists Gate 0 (✅) y Gate 1 (✅ con deuda)
 └── templates/                  Plantillas reutilizables: prd, threat-model, adr
-apps/                           Servicios: matching-worker (ArcFace) y webhook-gateway (ingestión Meta) implementados; resto scaffolding
+apps/                           Servicios: matching-worker (ArcFace), webhook-gateway y meta-handler (ingestión Meta) implementados; resto scaffolding
 deploy/                         Despliegue (ADR-0014): k8s/ (kustomize EKS) + localstack/ (init dev)
 docker-compose.yml              Dev local: postgres+pgvector, redis, localstack (SQS/SNS), servicios
 docs/
@@ -103,7 +103,7 @@ docs/
 | 00 · Project | — | ✅ Charter, glosario, clasificación de datos |
 | 01 · Requirements | Gate 0 | ✅ PRD del flujo central con escenarios de abuso y OWASP |
 | 02 · Design | Gate 1 | ✅ C4, threat model STRIDE/DREAD, **ADR-0001…0013** y contratos OpenAPI/AsyncAPI (deuda documentada) |
-| 03 · Implementation | Gate 2 | 🚧 `apps/matching-worker` (ArcFace/SQS/SNS/pgvector/FAISS 512-d, **32 tests**) + `apps/webhook-gateway` (ingestión Meta: firma + idempotencia + publica `meta.received`, **15 tests**). Afinado con infra real pendiente |
+| 03 · Implementation | Gate 2 | 🚧 `apps/matching-worker` (ArcFace 512-d, **32 tests**), `apps/webhook-gateway` (firma+idempotencia→`meta.received`, **15 tests**) y `apps/meta-handler` (normaliza→`inbound.text`/`inbound.media`, **11 tests**). Afinado con infra real pendiente |
 | 05 · Deployment | Gate 4 | 🚧 Apps **container-ready**: Dockerfiles, `docker-compose` (dev) y `deploy/k8s` para EKS (IRSA, ALB+HPA, KEDA, GPU) — ADR-0014. CI/CD e IaC pendientes |
 | 04 · Testing / 06 · Monitoring | Gates 3, 5 | ⬜ Pendiente (estructura creada) |
 

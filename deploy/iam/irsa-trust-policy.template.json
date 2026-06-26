@@ -1,0 +1,19 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowIrsaAssumeRole",
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::772032166382:oidc-provider/oidc.eks.sa-east-1.amazonaws.com/id/EKS_OIDC_ID"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "oidc.eks.sa-east-1.amazonaws.com/id/EKS_OIDC_ID:aud": "sts.amazonaws.com",
+          "oidc.eks.sa-east-1.amazonaws.com/id/EKS_OIDC_ID:sub": "system:serviceaccount:respuesta:SERVICE_ACCOUNT_NAME"
+        }
+      }
+    }
+  ]
+}

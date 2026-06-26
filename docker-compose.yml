@@ -59,6 +59,19 @@ services:
       META_APP_SECRET: ${META_APP_SECRET:-app-secret-dev}
     ports: ["8080:8080"]
 
+  meta-handler:
+    build: ./apps/meta-handler
+    depends_on:
+      localstack: {condition: service_healthy}
+    environment:
+      AWS_REGION: sa-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      SQS_INPUT_QUEUE_URL: http://localstack:4566/000000000000/meta-received
+      SQS_TEXT_QUEUE_URL: http://localstack:4566/000000000000/inbound-text
+      SQS_MEDIA_QUEUE_URL: http://localstack:4566/000000000000/inbound-media
+
   matching-worker:
     build: ./apps/matching-worker
     profiles: ["gpu"]   # requiere NVIDIA Container Toolkit; omitido en `up` por defecto
