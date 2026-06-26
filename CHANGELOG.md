@@ -132,7 +132,7 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
 - Matriz de abuso del flujo central trazada a OWASP (vigilancia de buscadores, suplantación de
   actores, falsos positivos de alto costo, exfiltración de biométricos, prompt injection en chatbot).
 
-## [0.1.0] - 2026-06-25
+## [0.0.1] - 2026-06-25
 
 Fase `00-project` (concepto y fundamentos de diseño) completa.
 
@@ -166,5 +166,5 @@ Fase `00-project` (concepto y fundamentos de diseño) completa.
 - Privacidad por diseño: identidades de buscadores no se exponen por defecto; conexión opt-in y
   revocable; control de acceso/reenvío sobre fotos y video.
 
-[Unreleased]: https://example.com/respuesta/compare/v0.1.0...HEAD
-[0.1.0]: https://example.com/respuesta/releases/tag/v0.1.0
+[Unreleased]: https://github.com/jeremialcala/proyecto-respuesta/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/jeremialcala/proyecto-respuesta/releases/tag/v0.0.1
