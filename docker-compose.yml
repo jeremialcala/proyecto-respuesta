@@ -126,6 +126,38 @@ services:
       META_GRAPH_TOKEN: graph-token-dev
       WA_PHONE_NUMBER_ID: "000000000000000"
 
+  core-backend:
+    build: ./apps/core-backend
+    depends_on:
+      postgres: {condition: service_healthy}
+      localstack: {condition: service_healthy}
+    environment:
+      AWS_REGION: sa-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      PGVECTOR_DSN: postgresql://respuesta:respuesta@postgres:5432/respuesta
+      SQS_REPORT_RECEIVED_URL: http://localstack:4566/000000000000/report-received
+      SNS_REPORT_INGESTED_ARN: arn:aws:sns:sa-east-1:000000000000:report-ingested
+      SNS_STATE_CHANGED_ARN: arn:aws:sns:sa-east-1:000000000000:state-changed
+    ports: ["8081:8080"]
+
+  core-backend-consumer:
+    build: ./apps/core-backend
+    command: ["python","-m","core_backend"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      localstack: {condition: service_healthy}
+    environment:
+      AWS_REGION: sa-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      PGVECTOR_DSN: postgresql://respuesta:respuesta@postgres:5432/respuesta
+      SQS_REPORT_RECEIVED_URL: http://localstack:4566/000000000000/report-received
+      SNS_REPORT_INGESTED_ARN: arn:aws:sns:sa-east-1:000000000000:report-ingested
+      SNS_STATE_CHANGED_ARN: arn:aws:sns:sa-east-1:000000000000:state-changed
+
   matching-worker:
     build: ./apps/matching-worker
     profiles: ["gpu"]   # requiere NVIDIA Container Toolkit; omitido en `up` por defecto

@@ -20,7 +20,7 @@ for q in meta-received inbound-text inbound-media media-stored outbound-reply re
   create_queue_with_dlq "$q"
 done
 
-for t in candidate-generated match-confirmed match-resolved state-changed notification-sent; do
+for t in report-ingested candidate-generated match-confirmed match-resolved state-changed notification-sent; do
   awslocal sns create-topic --name "$t" >/dev/null && echo "  topic ${t}"
 done
 for b in respuesta-media respuesta-quarantine; do

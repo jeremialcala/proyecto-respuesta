@@ -1,0 +1,26 @@
+[project]
+name = "core-backend"
+version = "0.1.0"
+description = "Core Backend / API de Respuesta — reportes (esquema dinámico), máquina de estados, auditoría SHA-256; consume report.received y emite report.ingested/state.changed (ADR-0007/0011/0012)."
+requires-python = ">=3.10"
+
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "boto3>=1.34",            # SQS/SNS
+    "psycopg[binary]>=3.1",   # Postgres (reportes, entidades, auditoría)
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.4"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

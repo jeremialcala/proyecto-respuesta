@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core-backend-consumer
+  labels: {app.kubernetes.io/name: core-backend-consumer, app.kubernetes.io/part-of: respuesta}
+spec:
+  replicas: 1   # escala por cola report-received vía KEDA
+  selector:
+    matchLabels: {app.kubernetes.io/name: core-backend-consumer}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: core-backend-consumer}
+    spec:
+      serviceAccountName: core-backend
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: core-backend-consumer
+          image: respuesta/core-backend:0.1.0
+          command: ["python","-m","core_backend"]
+          envFrom:
+            - configMapRef: {name: core-backend-config}
+            - secretRef: {name: core-backend-secrets}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: 500m, memory: 256Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]

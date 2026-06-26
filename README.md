@@ -62,7 +62,7 @@ documentos:
 .ai-dlc/
 ├── gates/                      Checklists Gate 0 (✅) y Gate 1 (✅ con deuda)
 └── templates/                  Plantillas reutilizables: prd, threat-model, adr
-apps/                           Servicios: matching-worker (ArcFace), ingestión Meta (webhook-gateway, meta-handler, vault-worker), chatbot-gateway (LLM) y output-service (salida Graph API); resto scaffolding
+apps/                           Servicios MVP: core-backend (API/estados/auditoría), matching-worker (ArcFace), ingestión Meta (webhook-gateway, meta-handler, vault-worker), chatbot-gateway (LLM) y output-service
 deploy/                         Despliegue (ADR-0014): k8s/ (kustomize EKS) + localstack/ (init dev)
 docker-compose.yml              Dev local: postgres+pgvector, redis, localstack (SQS/SNS), servicios
 docs/
@@ -103,7 +103,7 @@ docs/
 | 00 · Project | — | ✅ Charter, glosario, clasificación de datos |
 | 01 · Requirements | Gate 0 | ✅ PRD del flujo central con escenarios de abuso y OWASP |
 | 02 · Design | Gate 1 | ✅ C4, threat model STRIDE/DREAD, **ADR-0001…0013** y contratos OpenAPI/AsyncAPI (deuda documentada) |
-| 03 · Implementation | Gate 2 | 🚧 Ingestión+chatbot+salida: `webhook-gateway` (**15**), `meta-handler` (**11**), `vault-worker` (**8**), `chatbot-gateway` (**12**), `output-service` (texto/HSM por ventana 24h, **5**) + `matching-worker` (**32**). **83 tests en verde**; afinado con infra real pendiente |
+| 03 · Implementation | Gate 2 | 🚧 Flujo central E2E: `webhook-gateway` (**15**), `meta-handler` (**11**), `vault-worker` (**8**), `chatbot-gateway` (**12**), `output-service` (**5**), `core-backend` (reportes+estados+auditoría SHA-256, **16**) + `matching-worker` (**32**). **99 tests en verde**; afinado con infra real pendiente |
 | 05 · Deployment | Gate 4 | 🚧 Apps **container-ready**: Dockerfiles, `docker-compose` (dev) y `deploy/k8s` para EKS (IRSA, ALB+HPA, KEDA, GPU) — ADR-0014. CI/CD e IaC pendientes |
 | 04 · Testing / 06 · Monitoring | Gates 3, 5 | ⬜ Pendiente (estructura creada) |
 

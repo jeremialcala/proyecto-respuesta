@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core-backend-api
+  labels: {app.kubernetes.io/name: core-backend-api, app.kubernetes.io/part-of: respuesta}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app.kubernetes.io/name: core-backend-api}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: core-backend-api}
+    spec:
+      serviceAccountName: core-backend
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: core-backend-api
+          image: respuesta/core-backend:0.1.0
+          command: ["uvicorn","core_backend.api.app:app","--host","0.0.0.0","--port","8080"]
+          ports: [{containerPort: 8080, name: http}]
+          envFrom:
+            - configMapRef: {name: core-backend-config}
+            - secretRef: {name: core-backend-secrets}   # PGVECTOR_DSN (External Secrets)
+          readinessProbe: {httpGet: {path: /healthz, port: http}, initialDelaySeconds: 5, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, initialDelaySeconds: 10, periodSeconds: 15}
+          resources: {requests: {cpu: 200m, memory: 256Mi}, limits: {cpu: "1", memory: 512Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]

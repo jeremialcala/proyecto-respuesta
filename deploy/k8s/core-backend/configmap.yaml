@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: core-backend-config
+data:
+  AWS_REGION: "sa-east-1"
+  SQS_REPORT_RECEIVED_URL: "https://sqs.sa-east-1.amazonaws.com/ACCOUNT_ID/report-received"
+  SNS_REPORT_INGESTED_ARN: "arn:aws:sns:sa-east-1:ACCOUNT_ID:report-ingested"
+  SNS_STATE_CHANGED_ARN: "arn:aws:sns:sa-east-1:ACCOUNT_ID:state-changed"
