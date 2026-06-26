@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault-worker
+  labels: {app.kubernetes.io/name: vault-worker, app.kubernetes.io/part-of: respuesta}
+spec:
+  replicas: 1   # escala por cola vía KEDA (scaledobject.yaml)
+  selector:
+    matchLabels: {app.kubernetes.io/name: vault-worker}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: vault-worker}
+    spec:
+      serviceAccountName: vault-worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: vault-worker
+          image: respuesta/vault-worker:0.1.0
+          envFrom:
+            - configMapRef: {name: vault-worker-config}
+            - secretRef: {name: vault-worker-secrets}   # KMS_KEY_ID, META_GRAPH_TOKEN (External Secrets)
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]

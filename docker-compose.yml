@@ -72,6 +72,60 @@ services:
       SQS_TEXT_QUEUE_URL: http://localstack:4566/000000000000/inbound-text
       SQS_MEDIA_QUEUE_URL: http://localstack:4566/000000000000/inbound-media
 
+  vault-worker:
+    build: ./apps/vault-worker
+    profiles: ["media"]   # requiere S3 (LocalStack) y KMS (LocalStack Pro o mock)
+    depends_on:
+      localstack: {condition: service_healthy}
+    environment:
+      AWS_REGION: sa-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      SQS_INPUT_QUEUE_URL: http://localstack:4566/000000000000/inbound-media
+      SQS_STORED_QUEUE_URL: arn:aws:sns:sa-east-1:000000000000:media-stored
+      MEDIA_BUCKET: respuesta-media
+      QUARANTINE_BUCKET: respuesta-quarantine
+      KMS_KEY_ID: alias/respuesta-vault
+      META_GRAPH_TOKEN: graph-token-dev
+
+  llm:
+    image: ollama/ollama:latest
+    profiles: ["chat"]
+    ports: ["11434:11434"]
+    volumes: ["ollama:/root/.ollama"]
+
+  chatbot-gateway:
+    build: ./apps/chatbot-gateway
+    profiles: ["chat"]
+    depends_on:
+      localstack: {condition: service_healthy}
+    environment:
+      AWS_REGION: sa-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      SQS_INPUT_QUEUE_URL: http://localstack:4566/000000000000/inbound-text
+      SQS_REPLY_QUEUE_URL: http://localstack:4566/000000000000/outbound-reply
+      SQS_REPORT_QUEUE_URL: http://localstack:4566/000000000000/report-received
+      OLLAMA_URL: http://llm:11434
+      LLM_MODEL: llama3.1:8b
+
+  output-service:
+    build: ./apps/output-service
+    depends_on:
+      localstack: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    environment:
+      AWS_REGION: sa-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      SQS_INPUT_QUEUE_URL: http://localstack:4566/000000000000/outbound-reply
+      REDIS_URL: redis://redis:6379/0
+      META_GRAPH_TOKEN: graph-token-dev
+      WA_PHONE_NUMBER_ID: "000000000000000"
+
   matching-worker:
     build: ./apps/matching-worker
     profiles: ["gpu"]   # requiere NVIDIA Container Toolkit; omitido en `up` por defecto
@@ -96,3 +150,4 @@ services:
 
 volumes:
   pgdata:
+  ollama:

@@ -23,4 +23,7 @@ done
 for t in candidate-generated match-confirmed match-resolved state-changed notification-sent; do
   awslocal sns create-topic --name "$t" >/dev/null && echo "  topic ${t}"
 done
+for b in respuesta-media respuesta-quarantine; do
+  awslocal s3 mb "s3://${b}" >/dev/null && echo "  bucket ${b}"
+done
 echo "[init] listo."

@@ -1,0 +1,24 @@
+[project]
+name = "output-service"
+version = "0.1.0"
+description = "Servicio de Salida (Respuesta) — consume outbound.reply y responde por la Graph API (texto en ventana 24h o plantilla HSM) (ADR-0005/0012)."
+requires-python = ">=3.10"
+
+dependencies = [
+    "boto3>=1.34",   # SQS (consume outbound.reply)
+    "redis>=5.0",    # estado de la ventana de 24h por contacto
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.4"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

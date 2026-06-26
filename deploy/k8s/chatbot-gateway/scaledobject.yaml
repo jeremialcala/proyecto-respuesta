@@ -1,0 +1,18 @@
+# KEDA: escala el chatbot por profundidad de inbound-text (ADR-0012). El cuello real es el LLM (GPU).
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: chatbot-gateway
+spec:
+  scaleTargetRef: {name: chatbot-gateway}
+  minReplicaCount: 1
+  maxReplicaCount: 5
+  cooldownPeriod: 120
+  triggers:
+    - type: aws-sqs-queue
+      authenticationRef: {name: keda-aws-irsa}
+      metadata:
+        queueURL: https://sqs.sa-east-1.amazonaws.com/ACCOUNT_ID/inbound-text
+        queueLength: "30"
+        awsRegion: sa-east-1
+        identityOwner: operator

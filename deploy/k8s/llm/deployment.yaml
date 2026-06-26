@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm
+  labels: {app.kubernetes.io/name: llm, app.kubernetes.io/part-of: respuesta}
+spec:
+  replicas: 1   # LLM on-prem (Ollama) en GPU — ADR-0001/0006 (RTX 3090). No autoritativo.
+  selector:
+    matchLabels: {app.kubernetes.io/name: llm}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: llm}
+    spec:
+      nodeSelector: {"nvidia.com/gpu.present": "true"}
+      tolerations: [{key: "nvidia.com/gpu", operator: "Exists", effect: "NoSchedule"}]
+      containers:
+        - name: ollama
+          image: ollama/ollama:latest
+          ports: [{containerPort: 11434, name: http}]
+          resources:
+            requests: {cpu: "1", memory: 6Gi, nvidia.com/gpu: 1}
+            limits:   {cpu: "2", memory: 10Gi, nvidia.com/gpu: 1}
+          volumeMounts: [{name: models, mountPath: /root/.ollama}]
+      volumes: [{name: models, emptyDir: {}}]   # o PVC/EFS para cachear los pesos

@@ -1,0 +1,18 @@
+# KEDA: escala el Worker de Bóveda por profundidad de la cola inbound-media (ADR-0012).
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: vault-worker
+spec:
+  scaleTargetRef: {name: vault-worker}
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  cooldownPeriod: 120
+  triggers:
+    - type: aws-sqs-queue
+      authenticationRef: {name: keda-aws-irsa}
+      metadata:
+        queueURL: https://sqs.sa-east-1.amazonaws.com/ACCOUNT_ID/inbound-media
+        queueLength: "30"
+        awsRegion: sa-east-1
+        identityOwner: operator

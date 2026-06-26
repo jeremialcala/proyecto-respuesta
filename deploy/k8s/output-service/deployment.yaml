@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: output-service
+  labels: {app.kubernetes.io/name: output-service, app.kubernetes.io/part-of: respuesta}
+spec:
+  replicas: 1   # escala por cola vía KEDA (scaledobject.yaml)
+  selector:
+    matchLabels: {app.kubernetes.io/name: output-service}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: output-service}
+    spec:
+      serviceAccountName: output-service
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: output-service
+          image: respuesta/output-service:0.1.0
+          envFrom:
+            - configMapRef: {name: output-service-config}
+            - secretRef: {name: output-service-secrets}   # META_GRAPH_TOKEN, WA_PHONE_NUMBER_ID (External Secrets)
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]

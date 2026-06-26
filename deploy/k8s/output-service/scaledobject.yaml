@@ -1,0 +1,18 @@
+# KEDA: escala el Servicio de Salida por profundidad de outbound-reply (ADR-0012).
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: output-service
+spec:
+  scaleTargetRef: {name: output-service}
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  cooldownPeriod: 120
+  triggers:
+    - type: aws-sqs-queue
+      authenticationRef: {name: keda-aws-irsa}
+      metadata:
+        queueURL: https://sqs.sa-east-1.amazonaws.com/ACCOUNT_ID/outbound-reply
+        queueLength: "50"
+        awsRegion: sa-east-1
+        identityOwner: operator

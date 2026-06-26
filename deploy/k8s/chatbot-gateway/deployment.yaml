@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chatbot-gateway
+  labels: {app.kubernetes.io/name: chatbot-gateway, app.kubernetes.io/part-of: respuesta}
+spec:
+  replicas: 1   # orquestación CPU-ligera; escala por cola vía KEDA. El LLM corre en el servicio `llm`.
+  selector:
+    matchLabels: {app.kubernetes.io/name: chatbot-gateway}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: chatbot-gateway}
+    spec:
+      serviceAccountName: chatbot-gateway
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: chatbot-gateway
+          image: respuesta/chatbot-gateway:0.1.0
+          envFrom:
+            - configMapRef: {name: chatbot-gateway-config}
+            - secretRef: {name: chatbot-gateway-secrets}   # claves JWE/Vault (External Secrets)
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]
