@@ -6,6 +6,9 @@ info:
     Eventos asíncronos (patrón cola + worker, AMQP) del flujo central. La cola absorbe picos sin
     perder mensajes (offline-first, ADR-0001). El motor de matching consume `report.ingested` y
     publica `candidate.generated`. Las transiciones de estado se auditan (RS-06).
+    Los canales `inbound.*`/`media.stored`/`outbound.reply` modelan la ingestión de Meta del Gestor
+    de Webhooks y el Worker de Bóveda (ADR-0005): texto al LLM on-prem, adjuntos a la bóveda cifrada.
+    Los cuerpos con PII viajan cifrados en JWE.
 
 servers:
   broker:
@@ -16,6 +19,56 @@ servers:
 defaultContentType: application/json
 
 channels:
+  meta.received:
+    description: Payload crudo de Meta publicado por el Webhook Gateway; lo procesa el Meta Handler.
+    publish:
+      operationId: onMetaReceived
+      message: { $ref: '#/components/messages/MetaReceived' }
+  inbound.text:
+    description: Mensaje de texto de Meta, saneado y enrutado al LLM on-prem (cuerpo JWE).
+    publish:
+      operationId: onInboundText
+      message: { $ref: '#/components/messages/InboundText' }
+  inbound.media:
+    description: Referencia de adjunto (media_id) de Meta para que la bóveda lo descargue y cifre.
+    publish:
+      operationId: onInboundMedia
+      message: { $ref: '#/components/messages/InboundMedia' }
+  media.stored:
+    description: Adjunto descargado, escaneado (AV/CSAM) y cifrado en la bóveda; listo para matching.
+    subscribe:
+      operationId: consumeMediaStored
+      message: { $ref: '#/components/messages/MediaStored' }
+  outbound.reply:
+    description: Respuesta a entregar al usuario por la Graph API (servicio de salida).
+    publish:
+      operationId: onOutboundReply
+      message: { $ref: '#/components/messages/OutboundReply' }
+  meta.received.dlq:
+    description: DLQ de meta.received; el Gestor de DLQ marca el evento como fallido.
+    subscribe:
+      operationId: consumeMetaReceivedDlq
+      message: { $ref: '#/components/messages/DeadLetter' }
+  inbound.text.dlq:
+    description: DLQ de inbound.text; el Gestor de DLQ marca el evento como fallido.
+    subscribe:
+      operationId: consumeInboundTextDlq
+      message: { $ref: '#/components/messages/DeadLetter' }
+  inbound.media.dlq:
+    description: DLQ de inbound.media; el Gestor de DLQ marca el evento como fallido.
+    subscribe:
+      operationId: consumeInboundMediaDlq
+      message: { $ref: '#/components/messages/DeadLetter' }
+  media.stored.dlq:
+    description: DLQ de media.stored; el Gestor de DLQ marca el evento como fallido.
+    subscribe:
+      operationId: consumeMediaStoredDlq
+      message: { $ref: '#/components/messages/DeadLetter' }
+  outbound.reply.dlq:
+    description: DLQ de outbound.reply; el Gestor de DLQ marca el evento como fallido.
+    subscribe:
+      operationId: consumeOutboundReplyDlq
+      message: { $ref: '#/components/messages/DeadLetter' }
   report.received:
     description: Reporte capturado y encolado (offline-first).
     publish:
@@ -49,6 +102,24 @@ channels:
 
 components:
   messages:
+    MetaReceived:
+      name: MetaReceived
+      payload: { $ref: '#/components/schemas/MetaRawEvent' }
+    InboundText:
+      name: InboundText
+      payload: { $ref: '#/components/schemas/InboundText' }
+    InboundMedia:
+      name: InboundMedia
+      payload: { $ref: '#/components/schemas/InboundMedia' }
+    MediaStored:
+      name: MediaStored
+      payload: { $ref: '#/components/schemas/MediaStored' }
+    OutboundReply:
+      name: OutboundReply
+      payload: { $ref: '#/components/schemas/OutboundReply' }
+    DeadLetter:
+      name: DeadLetter
+      payload: { $ref: '#/components/schemas/DeadLetter' }
     ReportReceived:
       name: ReportReceived
       payload: { $ref: '#/components/schemas/ReportRef' }
@@ -69,6 +140,97 @@ components:
       payload: { $ref: '#/components/schemas/NotificationSent' }
 
   schemas:
+    MetaChannel:
+      type: string
+      enum: [whatsapp, instagram, messenger]
+    MediaType:
+      type: string
+      enum: [image, audio, video, document]
+    DeadLetter:
+      type: object
+      description: 'Mensaje inprocesable enrutado por DLX; el Gestor de DLQ marca el evento como fallido (EventAction ERR).'
+      required: [event_id, source_queue, reason, retries]
+      properties:
+        event_id: { type: string, format: uuid }
+        source_queue:
+          type: string
+          description: 'Cola de origen del mensaje muerto.'
+        reason:
+          type: string
+          enum: [validation_error, download_failed, scan_rejected, max_retries, ttl_expired, unknown]
+          description: 'Causa de la caida a DLQ.'
+        retries: { type: integer, minimum: 0 }
+        original_payload:
+          type: object
+          description: 'Mensaje original tal cual, para reproceso.'
+        failed_at: { type: string, format: date-time }
+    MetaRawEvent:
+      type: object
+      description: 'Payload crudo del webhook de Meta tras verificacion de firma e idempotencia (ADR-0005).'
+      required: [event_id, bot_id, object, raw]
+      properties:
+        event_id: { type: string, format: uuid }
+        bot_id: { type: string, format: uuid }
+        object: { type: string, enum: [page, whatsapp_business_account, instagram] }
+        signature_verified: { type: boolean }
+        raw:
+          type: object
+          description: 'Cuerpo tal cual lo envio Meta (entry[]), sin normalizar.'
+        received_at: { type: string, format: date-time }
+    InboundText:
+      type: object
+      description: 'Texto entrante de Meta tras verificacion de firma e idempotencia (ADR-0005).'
+      required: [event_id, bot_id, channel, contact_ref]
+      properties:
+        event_id: { type: string, format: uuid }
+        bot_id: { type: string, format: uuid }
+        channel: { $ref: '#/components/schemas/MetaChannel' }
+        contact_ref:
+          type: string
+          description: 'waId/fbId resuelto, sin PII en claro.'
+        jwe_body:
+          type: string
+          description: 'Cuerpo del mensaje cifrado en JWE, clave por evento.'
+        received_at: { type: string, format: date-time }
+    InboundMedia:
+      type: object
+      description: 'Referencia a un adjunto; el binario NO viaja por el webhook, solo media_id.'
+      required: [event_id, bot_id, media_id, media_type]
+      properties:
+        event_id: { type: string, format: uuid }
+        bot_id: { type: string, format: uuid }
+        media_id:
+          type: string
+          description: 'Id de medio de la Graph API para descarga.'
+        media_type: { $ref: '#/components/schemas/MediaType' }
+        mime_type: { type: string }
+        contact_ref: { type: string }
+    MediaStored:
+      type: object
+      description: 'Adjunto descargado, escaneado AV/CSAM y cifrado en la boveda.'
+      required: [event_id, media_ref, media_type, scan]
+      properties:
+        event_id: { type: string, format: uuid }
+        media_ref:
+          type: string
+          description: 'Puntero al objeto cifrado en el almacen protegido.'
+        media_type: { $ref: '#/components/schemas/MediaType' }
+        scan:
+          type: string
+          enum: [clean, quarantined, rejected]
+          description: 'Resultado del escaneo AV/CSAM.'
+        stored_at: { type: string, format: date-time }
+    OutboundReply:
+      type: object
+      description: 'Respuesta a enviar por la Graph API, desacoplada de la recepcion.'
+      required: [bot_id, channel, contact_ref]
+      properties:
+        bot_id: { type: string, format: uuid }
+        channel: { $ref: '#/components/schemas/MetaChannel' }
+        contact_ref: { type: string }
+        jwe_body:
+          type: string
+          description: 'Contenido de la respuesta cifrado en JWE.'
     PersonState:
       type: string
       enum: [desaparecido, a_salvo, localizado_estable, localizado_critico, fallecido, no_identificado]
