@@ -2,11 +2,12 @@
 # Pasarela de Chatbot — worker sin estado, imagen OCI no-root (ADR-0001/0002/0012/0014).
 # El LLM corre en un servicio aparte (Ollama on GPU); este servicio solo orquesta.
 FROM python:3.11-slim AS build
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY pyproject.toml ./
 COPY src ./src
-RUN pip install --no-cache-dir .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --timeout=120 --retries=10 .
 
 FROM python:3.11-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/app/src
