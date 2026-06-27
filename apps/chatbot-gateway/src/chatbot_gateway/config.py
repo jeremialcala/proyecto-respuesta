@@ -11,6 +11,8 @@ class ChatbotConfig:
     input_queue_url: str = ""        # SQS: inbound.text (lo publica el Meta Handler)
     reply_queue_url: str = ""        # SQS: outbound.reply (lo consume el servicio de salida)
     report_queue_url: str = ""       # SQS: report.received (lo consume el core-backend/intake)
+    entity_enrolled_queue_url: str = ""    # SQS: entity.enrolled (feedback "reporte completo", ADR-0016)
+    enrollment_failed_queue_url: str = ""  # SQS: enrollment.failed (feedback de la foto, ADR-0016)
     ollama_url: str = "http://llm:11434"
     llm_model: str = "llama3.1:8b"   # modelo open cuantizado (ADR-0001), en la RTX 3090
     ollama_timeout: int = 120        # s; modelos grandes (27B) en frío superan 60s
@@ -32,6 +34,8 @@ class ChatbotConfig:
             input_queue_url=os.getenv("SQS_INPUT_QUEUE_URL", ""),
             reply_queue_url=os.getenv("SQS_REPLY_QUEUE_URL", ""),
             report_queue_url=os.getenv("SQS_REPORT_QUEUE_URL", ""),
+            entity_enrolled_queue_url=os.getenv("SQS_ENTITY_ENROLLED_URL", ""),
+            enrollment_failed_queue_url=os.getenv("SQS_ENROLLMENT_FAILED_URL", ""),
             ollama_url=os.getenv("OLLAMA_URL", "http://llm:11434"),
             llm_model=os.getenv("LLM_MODEL", "llama3.1:8b"),
             ollama_timeout=int(os.getenv("OLLAMA_TIMEOUT", "120")),

@@ -1,8 +1,13 @@
-"""Arranque de la Pasarela de Chatbot (wiring). inbound.text → contexto+rieles+LLM → outbound.reply/report.received."""
+"""Arranque de la Pasarela de Chatbot (wiring). inbound.text → contexto+rieles+LLM → outbound.reply/report.received.
+
+Además consume el feedback de enrolamiento (ADR-0016): `entity.enrolled` (avisa "reporte completo") y
+`enrollment.failed` (guía a reenviar la foto), cada uno en su propio consumidor.
+"""
 from __future__ import annotations
 
 import logging
 import os
+import threading
 
 from .application.chatbot_service import ChatbotService
 from .adapters.memory_conversation_store import MemoryConversationStore
@@ -41,11 +46,20 @@ def build_service(cfg: ChatbotConfig, pub) -> ChatbotService:
     )
 
 
-def build_consumer(cfg: ChatbotConfig) -> SqsConsumer:
-    pub = SqsPublisher(cfg.reply_queue_url, cfg.report_queue_url, cfg.aws_region)
-    service = build_service(cfg, pub)
-    return SqsConsumer(cfg.input_queue_url, cfg.aws_region, service,
-                       cfg.max_messages, cfg.wait_time_seconds)
+def build_consumers(cfg: ChatbotConfig, service: ChatbotService) -> list[SqsConsumer]:
+    consumers = [
+        SqsConsumer(cfg.input_queue_url, cfg.aws_region, service.handle,
+                    cfg.max_messages, cfg.wait_time_seconds, name="inbound.text"),
+    ]
+    if cfg.entity_enrolled_queue_url:
+        consumers.append(
+            SqsConsumer(cfg.entity_enrolled_queue_url, cfg.aws_region, service.on_entity_enrolled,
+                        cfg.max_messages, cfg.wait_time_seconds, name="entity.enrolled"))
+    if cfg.enrollment_failed_queue_url:
+        consumers.append(
+            SqsConsumer(cfg.enrollment_failed_queue_url, cfg.aws_region, service.on_enrollment_failed,
+                        cfg.max_messages, cfg.wait_time_seconds, name="enrollment.failed"))
+    return consumers
 
 
 def main() -> None:
@@ -53,7 +67,16 @@ def main() -> None:
         level=os.getenv("LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
-    build_consumer(ChatbotConfig.from_env()).start()
+    cfg = ChatbotConfig.from_env()
+    pub = SqsPublisher(cfg.reply_queue_url, cfg.report_queue_url, cfg.aws_region)
+    service = build_service(cfg, pub)
+    consumers = build_consumers(cfg, service)
+    threads = [threading.Thread(target=c.start, name=c._name, daemon=True) for c in consumers]
+    for t in threads:
+        t.start()
+    log.info("chatbot-gateway consumidores arriba: %s", ", ".join(c._name for c in consumers))
+    for t in threads:
+        t.join()
 
 
 if __name__ == "__main__":

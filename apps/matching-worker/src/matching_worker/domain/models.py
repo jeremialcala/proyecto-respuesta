@@ -83,6 +83,7 @@ class PendingEnrollment:
     created_at: str
     expires_at: str
     status: str = "pending"           # pending | resolved | expired
+    reporter: Optional[dict] = None   # {bot_id, channel, contact_ref}: para avisar al cerrar (ADR-0016)
 
 
 @dataclass(frozen=True)

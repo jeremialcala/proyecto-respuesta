@@ -82,5 +82,7 @@ class VaultService:
             "media_ref": media_ref,
             "media_type": m.media_type,
             "scan": "clean",
+            "contact_ref": m.contact_ref,   # correlación con el reporte del mismo contacto (ADR-0016)
+            "bot_id": m.bot_id,
         }, self._cfg.producer, event_id=m.event_id))
         return VaultOutcome(verdict, media_ref=media_ref)

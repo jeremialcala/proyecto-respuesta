@@ -27,3 +27,17 @@ class AuditStore(Protocol):
 
 class EventPublisher(Protocol):
     def publish(self, topic: str, envelope: dict) -> None: ...
+
+
+class MediaCorrelationStore(Protocol):
+    """Correlaciona la foto del contacto con su reporte (ADR-0016). Maneja ambos órdenes de llegada.
+
+    Guarda por `contact_ref`, con TTL, el último `media_ref` recibido y los ids del reporte ingerido.
+    Así, llegue antes la foto o el reporte, el otro lado la encuentra y dispara el enrolamiento.
+    """
+
+    def remember_media(self, contact_ref: str, media_ref: str) -> None: ...
+    def get_media(self, contact_ref: str) -> Optional[str]: ...
+    def remember_report(self, contact_ref: str, report_id: str, entity_id: str,
+                        reporter: Optional[dict] = None) -> None: ...
+    def get_report(self, contact_ref: str) -> Optional[dict]: ...

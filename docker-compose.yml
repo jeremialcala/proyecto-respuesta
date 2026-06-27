@@ -80,7 +80,8 @@ services:
 
   vault-worker:
     build: ./apps/vault-worker
-    profiles: ["media"]   # requiere S3 (LocalStack) y KMS (LocalStack Pro o mock)
+    # Consume inbound.media: descarga el binario de Graph, escanea, cifra (KMS) y guarda en S3.
+    # LocalStack provee S3+KMS; necesita META_GRAPH_TOKEN real para bajar el adjunto de Meta.
     depends_on:
       localstack: {condition: service_healthy}
     environment:
@@ -119,6 +120,9 @@ services:
       SQS_INPUT_QUEUE_URL: http://localstack:4566/000000000000/inbound-text
       SQS_REPLY_QUEUE_URL: http://localstack:4566/000000000000/outbound-reply
       SQS_REPORT_QUEUE_URL: http://localstack:4566/000000000000/report-received
+      # Feedback de enrolamiento de la foto al reportante (ADR-0016)
+      SQS_ENTITY_ENROLLED_URL: http://localstack:4566/000000000000/entity-enrolled
+      SQS_ENROLLMENT_FAILED_URL: http://localstack:4566/000000000000/enrollment-failed
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}   # Ollama del host (parametrizable)
       LLM_MODEL: ${LLM_MODEL:-gemma3:27b}
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-120}      # s; sube si el modelo es grande / hay cola
@@ -170,13 +174,16 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       localstack: {condition: service_healthy}
+      redis: {condition: service_healthy}
     environment:
       AWS_REGION: sa-east-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       AWS_ENDPOINT_URL: http://localstack:4566
       PGVECTOR_DSN: postgresql://respuesta:respuesta@postgres:5432/respuesta
+      REDIS_URL: redis://redis:6379/0   # correlación foto↔reporte por contacto (ADR-0016)
       SQS_REPORT_RECEIVED_URL: http://localstack:4566/000000000000/report-received
+      SQS_MEDIA_STORED_URL: http://localstack:4566/000000000000/media-stored-intake
       SNS_REPORT_INGESTED_ARN: arn:aws:sns:sa-east-1:000000000000:report-ingested
       SNS_STATE_CHANGED_ARN: arn:aws:sns:sa-east-1:000000000000:state-changed
 

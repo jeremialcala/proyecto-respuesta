@@ -1,22 +1,27 @@
-"""Consume report.received y delega en el IntakeService (ADR-0011/0012). `boto3` perezoso."""
+"""Consumidor SQS genérico (cola+worker, long polling) — ADR-0012. `boto3` perezoso.
+
+Recibe un `handler(envelope)` y lo invoca por mensaje, permitiendo cablear varias colas
+(`report.received` → intake; `media.stored` → correlación foto↔reporte, ADR-0016). Entrega
+*at-least-once* → idempotencia por `event_id`; los inprocesables no se borran (redrive a DLQ).
+"""
 from __future__ import annotations
 
 import json
 import logging
-
-from ..application.intake_service import IntakeService
+from typing import Callable
 
 log = logging.getLogger(__name__)
 
 
 class SqsConsumer:
-    def __init__(self, queue_url: str, region: str, service: IntakeService,
-                 max_messages: int = 10, wait_time_seconds: int = 20) -> None:
+    def __init__(self, queue_url: str, region: str, handler: Callable[[dict], None],
+                 max_messages: int = 10, wait_time_seconds: int = 20, name: str = "") -> None:
         self._queue_url = queue_url
         self._region = region
-        self._service = service
+        self._handler = handler
         self._max = max_messages
         self._wait = wait_time_seconds
+        self._name = name or queue_url.rsplit("/", 1)[-1]
         self._client = None
         self._running = False
 
@@ -29,27 +34,29 @@ class SqsConsumer:
     def start(self) -> None:
         client = self._ensure()
         self._running = True
-        log.info("escuchando report.received en %s", self._queue_url)
+        log.info("escuchando %s en %s", self._name, self._queue_url)
         while self._running:
             resp = client.receive_message(
                 QueueUrl=self._queue_url, MaxNumberOfMessages=self._max,
                 WaitTimeSeconds=self._wait, MessageAttributeNames=["All"])
             msgs = resp.get("Messages", [])
             if msgs:
-                log.info("recibidos %d mensaje(s)", len(msgs))
+                log.info("[%s] recibidos %d mensaje(s)", self._name, len(msgs))
             for m in msgs:
                 eid = "?"
                 try:
                     body = json.loads(m["Body"])
                     eid = body.get("event_id", "?")
-                    log.info("→ procesando event_id=%s event_type=%s", eid, body.get("event_type", "?"))
-                    self._service.handle(body)
+                    log.info("[%s] → procesando event_id=%s event_type=%s",
+                             self._name, eid, body.get("event_type", "?"))
+                    self._handler(body)
                 except Exception:
-                    log.exception("✗ fallo event_id=%s → sin borrar (redrive a DLQ)", eid)
+                    log.exception("[%s] ✗ fallo event_id=%s → sin borrar (redrive a DLQ)",
+                                  self._name, eid)
                     continue
                 else:
                     client.delete_message(QueueUrl=self._queue_url, ReceiptHandle=m["ReceiptHandle"])
-                    log.info("✓ procesado event_id=%s → borrado", eid)
+                    log.info("[%s] ✓ procesado event_id=%s → borrado", self._name, eid)
 
     def stop(self) -> None:
         self._running = False

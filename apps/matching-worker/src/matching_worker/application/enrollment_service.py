@@ -33,6 +33,13 @@ def _bbox_list(face: FaceMap | PendingFace):
     return [b.x1, b.y1, b.x2, b.y2] if b is not None else None
 
 
+def _reporter_fields(reporter: Optional[dict]) -> dict:
+    """Campos de identidad del reportante para los eventos de feedback (ADR-0016)."""
+    r = reporter or {}
+    return {"bot_id": r.get("bot_id", ""), "channel": r.get("channel", ""),
+            "contact_ref": r.get("contact_ref", "")}
+
+
 class EnrollmentService:
     def __init__(
         self,
@@ -72,24 +79,25 @@ class EnrollmentService:
         return True
 
     def _enroll(self, entity_id: str, face: FaceMap, report_id: Optional[str],
-                source: str) -> None:
+                source: str, reporter: Optional[dict] = None) -> None:
         self._store.add_reference(entity_id, face.embedding)   # upsert por entity_id (idempotente)
         self._index.rebuild_from(self._store)                  # refresca el ANN desde pgvector
-        self._bus.publish("entity.enrolled", {
+        payload = {
             "entity_id": entity_id,
             "report_id": report_id,
             "face_quality": {"size_px": face.quality.size_px, "blur_var": face.quality.blur_var},
             "det_score": face.det_score,
             "source": source,
-        })
+        }
+        payload.update(_reporter_fields(reporter))   # identidad para avisar al reportante (ADR-0016)
+        self._bus.publish("entity.enrolled", payload)
         log.info("✓ enrolado entity_id=%s (source=%s)", entity_id, source)
 
     def _fail(self, entity_id: Optional[str], report_id: Optional[str], reason: str,
-              conversation_key: Optional[str]) -> None:
-        self._bus.publish("enrollment.failed", {
-            "entity_id": entity_id, "report_id": report_id,
-            "reason": reason, "conversation_key": conversation_key,
-        })
+              reporter: Optional[dict] = None) -> None:
+        payload = {"entity_id": entity_id, "report_id": report_id, "reason": reason}
+        payload.update(_reporter_fields(reporter))
+        self._bus.publish("enrollment.failed", payload)
         log.info("✗ enrolamiento fallido entity_id=%s reason=%s", entity_id, reason)
 
     # --- report.ingested ---
@@ -99,6 +107,8 @@ class EnrollmentService:
         report_id = p.get("report_id")
         media_ref = p.get("media_ref")
         conversation_key = p.get("conversation_key")
+        reporter = {"bot_id": p.get("bot_id", ""), "channel": p.get("channel", ""),
+                    "contact_ref": p.get("contact_ref", "")}
         if not entity_id or not media_ref:
             log.warning("report.ingested sin entity_id/media_ref; se ignora (event_id=%s)",
                         envelope.get("event_id"))
@@ -108,10 +118,10 @@ class EnrollmentService:
         faces = [f for f in self._fm.map_image(image) if self._presentable(f)]
 
         if not faces:
-            self._fail(entity_id, report_id, "no_face", conversation_key)
+            self._fail(entity_id, report_id, "no_face", reporter)
             return
         if len(faces) == 1:
-            self._enroll(entity_id, faces[0], report_id, source="report.ingested")
+            self._enroll(entity_id, faces[0], report_id, "report.ingested", reporter)
             return
 
         # ≥2 rostros: NO enrola; recorta, guarda efímero y pregunta al reportante.
@@ -128,6 +138,7 @@ class EnrollmentService:
             entity_id=entity_id, report_id=report_id, faces=pending_faces,
             conversation_key=conversation_key,
             created_at=_iso(now), expires_at=_iso(now + timedelta(seconds=self._pending_ttl)),
+            reporter=reporter,
         )
         self._pending.save(pending)
         self._bus.publish("face.disambiguation.requested", {
@@ -160,27 +171,26 @@ class EnrollmentService:
             return  # idempotencia: resolved duplicado es no-op
 
         all_crops = [f.crop_ref for f in pending.faces if f.crop_ref]
+        reporter = pending.reporter
 
         # Expirado: purga recortes y responde expired.
         if self._iso_now() > pending.expires_at:
             self._media.delete_crops(all_crops)
             self._pending.mark_resolved(disambiguation_id)
-            self._fail(pending.entity_id, pending.report_id, "expired", pending.conversation_key)
+            self._fail(pending.entity_id, pending.report_id, "expired", reporter)
             return
 
         # El sujeto no está en la foto → purga todo y pide otra.
         if p.get("action") == "none_of_these":
             self._media.delete_crops(all_crops)
             self._pending.mark_resolved(disambiguation_id)
-            self._fail(pending.entity_id, pending.report_id, "no_subject_in_photo",
-                       pending.conversation_key)
+            self._fail(pending.entity_id, pending.report_id, "no_subject_in_photo", reporter)
             return
 
         selected = p.get("selected_index")
         if not isinstance(selected, int) or not (0 <= selected < len(pending.faces)):
             # Índice inválido: no enrola ni purga (permite corregir hasta el TTL).
-            self._fail(pending.entity_id, pending.report_id, "invalid_selection",
-                       pending.conversation_key)
+            self._fail(pending.entity_id, pending.report_id, "invalid_selection", reporter)
             return
 
         chosen = pending.faces[selected]
@@ -188,7 +198,7 @@ class EnrollmentService:
             pending.entity_id,
             FaceMap(embedding=chosen.embedding, quality=_zero_quality(),
                     bbox=chosen.bbox, det_score=chosen.det_score),
-            pending.report_id, source="face.disambiguation.resolved",
+            pending.report_id, "face.disambiguation.resolved", reporter,
         )
         self._media.delete_crops(all_crops)            # minimización: purga TODOS los recortes
         self._pending.mark_resolved(disambiguation_id)

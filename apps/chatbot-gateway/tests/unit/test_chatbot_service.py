@@ -170,6 +170,49 @@ def test_context_passed_to_llm_carries_history_and_profile():
     assert "busco a Maria" in textos                     # historial reciente del turno anterior
 
 
+# --- feedback de enrolamiento de la foto (ADR-0016) ---
+
+def _enrolled_env(contact="584120000000"):
+    return {"event_id": "evt-enr", "event_type": "entity.enrolled",
+            "payload": {"entity_id": "ent_1", "report_id": "rep_1",
+                        "bot_id": "bot-1", "channel": "whatsapp", "contact_ref": contact}}
+
+
+def _failed_env(reason, contact="584120000000"):
+    return {"event_id": "evt-fail", "event_type": "enrollment.failed",
+            "payload": {"entity_id": "ent_1", "report_id": "rep_1", "reason": reason,
+                        "bot_id": "bot-1", "channel": "whatsapp", "contact_ref": contact}}
+
+
+def test_entity_enrolled_notifies_report_complete_once():
+    store = MemoryConversationStore()
+    svc, pub, _ = _svc(FakeLlm(), store=store)
+    svc.on_entity_enrolled(_enrolled_env())
+    assert len(pub.replies) == 1
+    assert "completo" in pub.replies[0]["payload"]["jwe_body"].lower()
+    svc.on_entity_enrolled(_enrolled_env())              # duplicado (at-least-once)
+    assert len(pub.replies) == 1                          # idempotente: no repite el aviso
+
+
+def test_entity_enrolled_without_contact_is_noop():
+    svc, pub, _ = _svc(FakeLlm())
+    svc.on_entity_enrolled({"event_id": "e", "payload": {"entity_id": "ent_1"}})
+    assert pub.replies == []
+
+
+def test_enrollment_failed_no_face_asks_for_another_photo():
+    svc, pub, _ = _svc(FakeLlm())
+    svc.on_enrollment_failed(_failed_env("no_face"))
+    assert len(pub.replies) == 1
+    assert "foto" in pub.replies[0]["payload"]["jwe_body"].lower()
+
+
+def test_enrollment_failed_invalid_selection_is_silent():
+    svc, pub, _ = _svc(FakeLlm())
+    svc.on_enrollment_failed(_failed_env("invalid_selection"))
+    assert pub.replies == []                              # sin acción del usuario → no se le molesta
+
+
 def test_separate_contacts_have_isolated_context():
     """Dos contactos distintos no comparten memoria (acceso a los datos de SU conversación)."""
     store = MemoryConversationStore()

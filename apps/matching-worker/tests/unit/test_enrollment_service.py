@@ -123,8 +123,9 @@ def _svc(faces, *, pending=None, fixed_id="dis_fixed", now=None):
 
 def _ingested(entity="ent_1", report="rep_1", media_ref="vault://m/1", ck="conv_1"):
     return {"event_id": "e1", "event_type": "report.ingested",
-            "payload": {"entity_id": entity, "report_id": report,
-                        "media_ref": media_ref, "conversation_key": ck}}
+            "payload": {"entity_id": entity, "report_id": report, "media_ref": media_ref,
+                        "conversation_key": ck, "bot_id": "bot-1", "channel": "whatsapp",
+                        "contact_ref": "wa:rep"}}
 
 
 # --- report.ingested ---
@@ -143,6 +144,8 @@ def test_single_face_enrolls_and_refreshes_index():
     assert d["index"].rebuilds == 1
     enrolled = d["bus"].payload("entity.enrolled")
     assert enrolled["entity_id"] == "ent_1" and enrolled["source"] == "report.ingested"
+    # la identidad del reportante viaja para el feedback "reporte completo" (ADR-0016)
+    assert enrolled["contact_ref"] == "wa:rep" and enrolled["bot_id"] == "bot-1"
 
 
 def test_tiny_background_faces_are_filtered_before_counting():

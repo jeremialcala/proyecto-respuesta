@@ -27,6 +27,18 @@ _SAFE_BLOCKED = ("Por tu seguridad no puedo procesar ese mensaje. ¿Puedo ayudar
 _SAFE_FALLBACK = ("Disculpa, tuve un problema procesando tu mensaje. ¿Puedes reformularlo, por favor?")
 _CORDIAL_PREFIX = "Entiendo que es un momento difícil. "
 
+# Aviso al reportante cuando la foto quedó enrolada y el reporte está completo (ADR-0016).
+_REPORT_COMPLETE = ("✅ ¡Listo! Tu reporte quedó completo y registrado, incluida la foto que enviaste. "
+                    "Gracias por la información. Te avisaremos ante cualquier coincidencia.")
+# Feedback sobre la foto cuando el enrolamiento no pudo completarse (ADR-0016).
+_PHOTO_FEEDBACK = {
+    "no_face": ("No pude reconocer un rostro en la foto. ¿Podrías enviar otra, de frente, "
+                "bien iluminada y donde se vea claramente la cara?"),
+    "low_quality": ("La foto salió poco nítida. ¿Puedes enviar otra más clara y de frente, por favor?"),
+    "no_subject_in_photo": ("Entendido, la persona no estaba en esa foto. ¿Puedes enviarme otra?"),
+    "expired": ("Pasó el tiempo para vincular la foto. Envíamela de nuevo, por favor."),
+}
+
 
 class Outcome(Enum):
     REPLIED = "replied"
@@ -116,6 +128,32 @@ class ChatbotService:
         self._convos.save_profile(key, profile)
         return HandleResult(outcome)
 
+    # --- feedback de enrolamiento (ADR-0016): cierra el lazo con el reportante ---
+    def on_entity_enrolled(self, envelope: dict) -> HandleResult:
+        """La foto se enroló en el motor de match → avisamos al reportante que su reporte está completo."""
+        p = envelope.get("payload", {}) or {}
+        bot_id, channel, contact_ref = p.get("bot_id", ""), p.get("channel", ""), p.get("contact_ref", "")
+        if not contact_ref:
+            return HandleResult(Outcome.REPLIED)   # sin identidad del reportante no podemos avisar
+        key = conversation_key(bot_id, channel, contact_ref)
+        ctx = self._load_context(key, "")
+        if ctx.profile.completion_notified:
+            return HandleResult(Outcome.REPLIED)   # idempotente: no repetir el aviso
+        self._publish_reply(bot_id, channel, contact_ref, envelope.get("event_id", ""), _REPORT_COMPLETE)
+        self._convos.save_profile(key, replace(ctx.profile, completion_notified=True))
+        return HandleResult(Outcome.REPLIED)
+
+    def on_enrollment_failed(self, envelope: dict) -> HandleResult:
+        """El enrolamiento de la foto falló → guiamos al reportante a reenviar una foto utilizable."""
+        p = envelope.get("payload", {}) or {}
+        bot_id, channel, contact_ref = p.get("bot_id", ""), p.get("channel", ""), p.get("contact_ref", "")
+        reason = p.get("reason", "")
+        text = _PHOTO_FEEDBACK.get(reason)
+        if not contact_ref or text is None:
+            return HandleResult(Outcome.REPLIED)   # invalid_selection u otros: sin acción del usuario
+        self._publish_reply(bot_id, channel, contact_ref, envelope.get("event_id", ""), text)
+        return HandleResult(Outcome.REPLIED)
+
     # --- contexto ---
     def _load_context(self, key: str, query_text: str) -> ConversationContext:
         q = self._embed.embed(query_text)
@@ -139,6 +177,8 @@ class ChatbotService:
             "notes": profile.notes,
             "source": f"chatbot:{channel}",
             "contact_ref": contact_ref,
+            "bot_id": bot_id,        # identidad del reportante: permite avisarle al cerrarse (ADR-0016)
+            "channel": channel,
         }, self._cfg.producer))
         self._log.record_action(event_id, "report_captured", "OK", profile.intention or "")
 

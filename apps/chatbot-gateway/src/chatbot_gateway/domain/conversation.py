@@ -61,6 +61,7 @@ class SessionProfile:
     notes: Optional[str] = None
     turn_count: int = 0
     report_emitted: bool = False             # evita re-publicar report.received en cada turno
+    completion_notified: bool = False        # evita repetir el aviso de "reporte completo" (ADR-0016)
 
     @property
     def report_complete(self) -> bool:

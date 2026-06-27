@@ -53,8 +53,9 @@ DIRECT_QUEUES=(meta-received inbound-text inbound-media outbound-reply report-re
 # 2) Colas de consumidor alimentadas vía SNS (fan-out). Una por (topic, consumidor):
 #    state-changed se entrega a Notificación Y Auditoría (fan-out del ADR-0012) -> 2 colas.
 FANOUT_QUEUES=(
-  report-ingested        # matching-worker
+  report-ingested        # matching-worker (enrolamiento, ADR-0016)
   media-stored           # matching-worker (imagen/video, C4)
+  media-stored-intake    # core-backend (correlación foto↔reporte, ADR-0016)
   candidate-generated    # back office / core-backend (enrutado por umbral)
   match-confirmed        # core-backend / notificación
   match-resolved         # core-backend / auditoría
@@ -77,6 +78,7 @@ TOPICS=(media-stored report-ingested candidate-generated match-confirmed match-r
 SUBSCRIPTIONS=(
   "report-ingested report-ingested"
   "media-stored media-stored"
+  "media-stored media-stored-intake"
   "candidate-generated candidate-generated"
   "match-confirmed match-confirmed"
   "match-resolved match-resolved"
