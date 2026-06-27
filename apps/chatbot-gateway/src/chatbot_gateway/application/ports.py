@@ -1,8 +1,9 @@
-"""Puertos de la Pasarela de Chatbot. Los adaptadores (Ollama, SQS, Vault) los implementan."""
+"""Puertos de la Pasarela de Chatbot. Los adaptadores (Ollama, SQS, Vault, Postgres) los implementan."""
 from __future__ import annotations
 
-from typing import Optional, Protocol
+from typing import Optional, Protocol, Sequence
 
+from ..domain.conversation import ConversationContext, SessionProfile, Turn
 from ..domain.models import ReportDraft
 
 
@@ -12,11 +13,42 @@ class BodyCipher(Protocol):
     def decrypt(self, jwe_body: str) -> str: ...
 
 
+class Embedder(Protocol):
+    """Genera embeddings de texto (modelo on-prem, p. ej. nomic-embed-text vía Ollama).
+
+    Devuelve `[]` si los embeddings están deshabilitados; en ese caso la memoria opera solo con la
+    ventana reciente (sin recuperación semántica).
+    """
+
+    def embed(self, text: str) -> Sequence[float]: ...
+
+
+class ConversationStore(Protocol):
+    """Memoria de conversación por contacto (estado por interlocutor — ADR-0015).
+
+    Persiste turnos y el perfil de sesión; recupera el contexto relevante para el turno actual.
+    """
+
+    def load(self, key: str, query_embedding: Sequence[float], *,
+             recent_n: int, top_k: int) -> ConversationContext:
+        """Carga perfil + últimos `recent_n` turnos + `top_k` turnos similares a la consulta."""
+        ...
+
+    def append_turn(self, key: str, turn: Turn, embedding: Sequence[float]) -> None:
+        """Añade un turno (con su embedding, si lo hay) al historial del contacto."""
+        ...
+
+    def save_profile(self, key: str, profile: SessionProfile) -> None:
+        """Persiste el perfil acumulado (borrador del reporte y datos del interlocutor)."""
+        ...
+
+
 class LlmClient(Protocol):
     """LLM on-premises (Ollama) — NO autoritativo: conversa y extrae, no decide estados (ADR-0001)."""
 
-    def converse(self, user_text: str) -> tuple[str, Optional[ReportDraft]]:
-        """Devuelve (respuesta_al_usuario, borrador_de_reporte | None)."""
+    def converse(self, user_text: str, context: ConversationContext
+                 ) -> tuple[str, Optional[ReportDraft]]:
+        """Devuelve (respuesta, borrador|None) usando el contexto de la conversación."""
         ...
 
 

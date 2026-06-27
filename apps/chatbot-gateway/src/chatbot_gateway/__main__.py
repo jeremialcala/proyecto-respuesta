@@ -1,26 +1,49 @@
-"""Arranque de la Pasarela de Chatbot (wiring). inbound.text → rieles+LLM → outbound.reply/report.received."""
+"""Arranque de la Pasarela de Chatbot (wiring). inbound.text → contexto+rieles+LLM → outbound.reply/report.received."""
 from __future__ import annotations
 
 import logging
 import os
 
 from .application.chatbot_service import ChatbotService
+from .adapters.memory_conversation_store import MemoryConversationStore
 from .adapters.noop_event_log import NoopEventLog
+from .adapters.ollama_embedder import NullEmbedder, OllamaEmbedder
 from .adapters.ollama_llm import OllamaLlmClient
 from .adapters.passthrough_cipher import PassthroughCipher
 from .adapters.sqs_consumer import SqsConsumer
 from .adapters.sqs_publisher import SqsPublisher
 from .config import ChatbotConfig
 
+log = logging.getLogger(__name__)
+
+
+def build_service(cfg: ChatbotConfig, pub) -> ChatbotService:
+    # Memoria de conversación: Postgres+pgvector si hay DSN; si no, en memoria (dev/tests) — ADR-0015.
+    if cfg.pgvector_dsn:
+        from .adapters.pg_conversation_store import PgConversationStore
+        store = PgConversationStore(cfg.pgvector_dsn, cfg.embed_dim)
+        store.init_schema()
+        log.info("ConversationStore: Postgres+pgvector (dim=%s)", cfg.embed_dim)
+    else:
+        store = MemoryConversationStore()
+        log.info("ConversationStore: en memoria (sin PGVECTOR_DSN)")
+
+    # Embeddings: Ollama si hay modelo configurado; si no, deshabilitados (solo ventana reciente).
+    embedder = OllamaEmbedder(cfg.ollama_url, cfg.embed_model) if cfg.embed_model else NullEmbedder()
+
+    return ChatbotService(
+        cfg,
+        cipher=PassthroughCipher(),
+        llm=OllamaLlmClient(cfg.ollama_url, cfg.llm_model,
+                            timeout=cfg.ollama_timeout, keep_alive=cfg.ollama_keep_alive),
+        reply_pub=pub, report_pub=pub, event_log=NoopEventLog(),
+        conversations=store, embedder=embedder,
+    )
+
 
 def build_consumer(cfg: ChatbotConfig) -> SqsConsumer:
     pub = SqsPublisher(cfg.reply_queue_url, cfg.report_queue_url, cfg.aws_region)
-    service = ChatbotService(
-        cfg,
-        cipher=PassthroughCipher(),
-        llm=OllamaLlmClient(cfg.ollama_url, cfg.llm_model),
-        reply_pub=pub, report_pub=pub, event_log=NoopEventLog(),
-    )
+    service = build_service(cfg, pub)
     return SqsConsumer(cfg.input_queue_url, cfg.aws_region, service,
                        cfg.max_messages, cfg.wait_time_seconds)
 

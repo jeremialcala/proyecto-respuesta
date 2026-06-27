@@ -1,8 +1,9 @@
-"""Orquestación del chatbot: rieles → LLM (no autoritativo) → reply/report (ADR-0001/0002)."""
+"""Orquestación del chatbot: contexto → rieles → LLM (no autoritativo) → reply/report (ADR-0001/0002/0015)."""
 import json
 
 from chatbot_gateway.config import ChatbotConfig
 from chatbot_gateway.application.chatbot_service import ChatbotService, Outcome
+from chatbot_gateway.adapters.memory_conversation_store import MemoryConversationStore
 from chatbot_gateway.domain.models import ReportDraft
 
 
@@ -12,13 +13,30 @@ class FakeCipher:
 
 
 class FakeLlm:
-    def __init__(self, reply="Gracias, ¿nombre completo?", draft=None):
-        self._reply, self._draft = reply, draft
-        self.calls = []
+    """LLM de prueba. `scripted` permite una respuesta/borrador distinto por turno."""
 
-    def converse(self, user_text):
+    def __init__(self, reply="Gracias, ¿nombre completo?", draft=None, scripted=None):
+        self._reply, self._draft = reply, draft
+        self._scripted = list(scripted or [])
+        self.calls = []           # textos recibidos
+        self.contexts = []        # contextos recibidos (para aserciones de memoria)
+
+    def converse(self, user_text, context):
         self.calls.append(user_text)
+        self.contexts.append(context)
+        if self._scripted:
+            return self._scripted.pop(0)
         return self._reply, self._draft
+
+
+class FakeEmbedder:
+    """Embedding determinístico por bolsa de palabras (suficiente para probar recuperación)."""
+
+    _VOCAB = ["juan", "maria", "perro", "documento", "cedula", "ubicacion", "hijo", "hospital"]
+
+    def embed(self, text):
+        t = (text or "").lower()
+        return [float(t.count(w)) for w in self._VOCAB]
 
 
 class FakePub:
@@ -41,16 +59,18 @@ class Log:
         self.a.append((action, status))
 
 
-def _svc(llm):
+def _svc(llm, store=None, embedder=None):
     pub, log = FakePub(), Log()
     svc = ChatbotService(ChatbotConfig(producer="chatbot-gateway"),
-                         FakeCipher(), llm, pub, pub, log)
+                         FakeCipher(), llm, pub, pub, log,
+                         conversations=store or MemoryConversationStore(),
+                         embedder=embedder or FakeEmbedder())
     return svc, pub, log
 
 
-def _env(text_obj):
+def _env(text_obj, contact="584120000000"):
     return {"event_id": "evt-1", "event_type": "inbound.text",
-            "payload": {"bot_id": "bot-1", "channel": "whatsapp", "contact_ref": "584120000000",
+            "payload": {"bot_id": "bot-1", "channel": "whatsapp", "contact_ref": contact,
                         "jwe_body": json.dumps(text_obj)}}
 
 
@@ -105,3 +125,58 @@ def test_location_acked_without_llm():
     res = svc.handle(_env({"kind": "location", "location": {"latitude": 1.0, "longitude": 2.0}}))
     assert res.outcome is Outcome.REPLIED and llm.calls == []
     assert "ubicación" in pub.replies[0]["payload"]["jwe_body"]
+
+
+# --- contexto de conversación / memoria por contacto (ADR-0015) ---
+
+def test_report_accumulated_across_turns_and_emitted_once():
+    """El reporte se completa en varios turnos; se publica una sola vez y luego no se repite."""
+    store = MemoryConversationStore()
+    # Turno 1: solo nombre+intención (incompleto). Turno 2: documento → completo. Turno 3: charla.
+    t1 = ("¿Me das su documento?", ReportDraft(intention="desaparecido", subject_name="Juan Pérez"))
+    t2 = ("Listo, registrado.", ReportDraft(intention="desaparecido", id_type="V", id_number="123"))
+    t3 = ("Gracias a ti.", None)
+    llm = FakeLlm(scripted=[t1, t2, t3])
+    svc, pub, _ = _svc(llm, store=store)
+
+    r1 = svc.handle(_env({"kind": "text", "text": "busco a Juan Pérez, desapareció"}))
+    assert r1.outcome is Outcome.REPLIED and pub.reports == []      # aún incompleto
+
+    r2 = svc.handle(_env({"kind": "text", "text": "su cédula es V-123"}))
+    assert r2.outcome is Outcome.REPLIED_WITH_REPORT                # se completó acumulando turnos
+    assert len(pub.reports) == 1
+    rep = pub.reports[0]["payload"]
+    assert (rep["subject_name"], rep["id_type"], rep["id_number"]) == ("Juan Pérez", "V", "123")
+
+    r3 = svc.handle(_env({"kind": "text", "text": "muchas gracias"}))
+    assert r3.outcome is Outcome.REPLIED and len(pub.reports) == 1  # NO se republica
+
+
+def test_context_passed_to_llm_carries_history_and_profile():
+    """El segundo turno recibe el primer mensaje como historial reciente y el perfil acumulado."""
+    store = MemoryConversationStore()
+    llm = FakeLlm(scripted=[
+        ("¿Su documento?", ReportDraft(intention="desaparecido", subject_name="Maria")),
+        ("Anotado.", None),
+    ])
+    svc, _, _ = _svc(llm, store=store)
+    svc.handle(_env({"kind": "text", "text": "busco a Maria"}))
+    svc.handle(_env({"kind": "text", "text": "no sé su documento"}))
+
+    ctx2 = llm.contexts[1]
+    assert ctx2.profile.subject_name == "Maria"          # perfil acumulado disponible
+    assert ctx2.profile.intention == "desaparecido"
+    textos = [t.text for t in ctx2.recent]
+    assert "busco a Maria" in textos                     # historial reciente del turno anterior
+
+
+def test_separate_contacts_have_isolated_context():
+    """Dos contactos distintos no comparten memoria (acceso a los datos de SU conversación)."""
+    store = MemoryConversationStore()
+    llm = FakeLlm(draft=None)
+    svc, _, _ = _svc(llm, store=store)
+    svc.handle(_env({"kind": "text", "text": "soy Ana"}, contact="58400AAA"))
+    svc.handle(_env({"kind": "text", "text": "hola"}, contact="58400BBB"))
+    ctx_b = llm.contexts[1]
+    assert ctx_b.is_new                                  # el contacto B arranca sin historial
+    assert all("Ana" not in t.text for t in ctx_b.recent)

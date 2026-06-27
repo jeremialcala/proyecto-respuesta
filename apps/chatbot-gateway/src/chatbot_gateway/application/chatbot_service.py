@@ -1,22 +1,26 @@
-"""Caso de uso de la Pasarela de Chatbot (ADR-0001/0002).
+"""Caso de uso de la Pasarela de Chatbot (ADR-0001/0002/0015).
 
-Consume `inbound.text`, descifra, pasa rieles de **entrada**, conversa con el **LLM on-prem**, pasa
-rieles de **salida**, publica `outbound.reply` y —si el LLM extrajo un reporte con el núcleo
-obligatorio— `report.received`. El LLM **no es autoritativo**: este servicio nunca emite
-`state.changed` ni eventos de match; solo conversa y captura.
+Consume `inbound.text`, descifra, **carga el contexto de la conversación** (memoria por contacto),
+pasa rieles de **entrada**, conversa con el **LLM on-prem** dándole ese contexto, pasa rieles de
+**salida**, acumula el borrador del reporte en el perfil de sesión y publica `outbound.reply` y
+—solo cuando el reporte acumulado a lo largo de la conversación queda completo— `report.received`
+(una sola vez). El LLM **no es autoritativo**: este servicio nunca emite `state.changed` ni match.
 """
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Optional
 
 from ..config import ChatbotConfig
 from ..domain import guardrails
+from ..domain.conversation import (ConversationContext, SessionProfile, Turn,
+                                   conversation_key)
 from ..domain.models import InputCategory, ReportDraft
 from .events import build_envelope
-from .ports import BodyCipher, EventLog, LlmClient, ReplyPublisher, ReportPublisher
+from .ports import (BodyCipher, ConversationStore, Embedder, EventLog, LlmClient,
+                    ReplyPublisher, ReportPublisher)
 
 _SAFE_BLOCKED = ("Por tu seguridad no puedo procesar ese mensaje. ¿Puedo ayudarte a reportar o "
                  "buscar a una persona?")
@@ -38,25 +42,33 @@ class HandleResult:
 
 class ChatbotService:
     def __init__(self, cfg: ChatbotConfig, cipher: BodyCipher, llm: LlmClient,
-                 reply_pub: ReplyPublisher, report_pub: ReportPublisher, event_log: EventLog) -> None:
+                 reply_pub: ReplyPublisher, report_pub: ReportPublisher, event_log: EventLog,
+                 conversations: ConversationStore, embedder: Embedder) -> None:
         self._cfg = cfg
         self._cipher = cipher
         self._llm = llm
         self._reply = reply_pub
         self._report = report_pub
         self._log = event_log
+        self._convos = conversations
+        self._embed = embedder
 
     def handle(self, inbound_text_envelope: dict) -> HandleResult:
         p = inbound_text_envelope.get("payload", {}) or {}
         event_id = inbound_text_envelope.get("event_id", "")
         bot_id, channel = p.get("bot_id", ""), p.get("channel", "")
         contact_ref = p.get("contact_ref", "")
+        key = conversation_key(bot_id, channel, contact_ref)   # quién nos habla (estable, no reversible)
 
         body = json.loads(self._cipher.decrypt(p.get("jwe_body", "") or "{}"))
         if body.get("kind") == "location":
-            # Ubicación: contexto, no conversación; ack cordial (sin LLM en el MVP).
+            # Ubicación: contexto, no conversación; ack cordial (sin LLM en el MVP). Se anota en memoria.
+            ctx = self._load_context(key, "ubicación compartida")
+            self._convos.append_turn(key, Turn.now("user", "[ubicación compartida]"),
+                                     self._embed.embed("ubicación compartida"))
             self._publish_reply(bot_id, channel, contact_ref, event_id,
                                 "Recibí tu ubicación, gracias. La sumo al reporte.")
+            self._convos.save_profile(key, _bump(ctx.profile))
             return HandleResult(Outcome.REPLIED)
 
         user_text = body.get("text", "")
@@ -68,14 +80,20 @@ class ChatbotService:
             self._publish_reply(bot_id, channel, contact_ref, event_id, _SAFE_BLOCKED)
             return HandleResult(Outcome.BLOCKED)
 
-        # --- LLM (no autoritativo) ---
-        reply_text, draft = self._llm.converse(user_text)
+        # --- contexto de la conversación (memoria por contacto) ---
+        ctx = self._load_context(key, user_text)
+
+        # --- LLM (no autoritativo), con contexto ---
+        reply_text, draft = self._llm.converse(user_text, ctx)
 
         # --- riel de salida ---
         out = guardrails.screen_output(reply_text)
         if not out.ok:
             self._log.record_action(event_id, "output_rail", out.category.value, out.reason)
             self._publish_reply(bot_id, channel, contact_ref, event_id, _SAFE_FALLBACK)
+            # Persistimos el turno del usuario aunque rechacemos la salida (no perdemos su mensaje).
+            self._convos.append_turn(key, Turn.now("user", user_text), self._embed.embed(user_text))
+            self._convos.save_profile(key, _bump(ctx.profile))
             return HandleResult(Outcome.OUTPUT_REJECTED)
 
         if screen.category is InputCategory.ABUSE:
@@ -83,10 +101,26 @@ class ChatbotService:
 
         self._publish_reply(bot_id, channel, contact_ref, event_id, reply_text)
 
-        if draft is not None and draft.complete:
-            self._publish_report(bot_id, channel, contact_ref, event_id, draft)
-            return HandleResult(Outcome.REPLIED_WITH_REPORT)
-        return HandleResult(Outcome.REPLIED)
+        # --- persistir turnos y acumular el borrador en el perfil ---
+        self._convos.append_turn(key, Turn.now("user", user_text), self._embed.embed(user_text))
+        self._convos.append_turn(key, Turn.now("assistant", reply_text), self._embed.embed(reply_text))
+        profile = _accumulate(ctx.profile, draft)
+
+        # --- control de reportes sobre TODA la conversación, no sobre un turno ---
+        outcome = Outcome.REPLIED
+        if profile.report_complete and not profile.report_emitted:
+            self._publish_report(bot_id, channel, contact_ref, event_id, profile)
+            profile = replace(profile, report_emitted=True)
+            outcome = Outcome.REPLIED_WITH_REPORT
+
+        self._convos.save_profile(key, profile)
+        return HandleResult(outcome)
+
+    # --- contexto ---
+    def _load_context(self, key: str, query_text: str) -> ConversationContext:
+        q = self._embed.embed(query_text)
+        return self._convos.load(key, q, recent_n=self._cfg.recent_turns,
+                                 top_k=self._cfg.retrieval_k)
 
     # --- publicación ---
     def _publish_reply(self, bot_id, channel, contact_ref, event_id, text) -> None:
@@ -96,14 +130,29 @@ class ChatbotService:
         }, self._cfg.producer))
         self._log.record_action(event_id, "reply", "SENT", "")
 
-    def _publish_report(self, bot_id, channel, contact_ref, event_id, draft: ReportDraft) -> None:
+    def _publish_report(self, bot_id, channel, contact_ref, event_id, profile: SessionProfile) -> None:
         self._report.publish_report(build_envelope("report.received", {
-            "intention": draft.intention,
-            "subject_name": draft.subject_name,
-            "id_type": draft.id_type,
-            "id_number": draft.id_number,
-            "notes": draft.notes,
+            "intention": profile.intention,
+            "subject_name": profile.subject_name,
+            "id_type": profile.id_type,
+            "id_number": profile.id_number,
+            "notes": profile.notes,
             "source": f"chatbot:{channel}",
             "contact_ref": contact_ref,
         }, self._cfg.producer))
-        self._log.record_action(event_id, "report_captured", "OK", draft.intention)
+        self._log.record_action(event_id, "report_captured", "OK", profile.intention or "")
+
+
+def _bump(profile: SessionProfile) -> SessionProfile:
+    """Incrementa el contador de turnos del perfil."""
+    return replace(profile, turn_count=profile.turn_count + 1)
+
+
+def _accumulate(profile: SessionProfile, draft: Optional[ReportDraft]) -> SessionProfile:
+    """Funde el borrador del turno actual sobre el perfil acumulado e incrementa el contador."""
+    merged = profile
+    if draft is not None:
+        merged = profile.merged_with(
+            intention=draft.intention, subject_name=draft.subject_name,
+            id_type=draft.id_type, id_number=draft.id_number, notes=draft.notes)
+    return _bump(merged)

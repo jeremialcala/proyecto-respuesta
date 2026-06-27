@@ -108,6 +108,7 @@ services:
     profiles: ["chat"]
     depends_on:
       localstack: {condition: service_healthy}
+      postgres: {condition: service_healthy}
     extra_hosts:
       - "host.docker.internal:host-gateway"   # resuelve el Ollama del host en Linux/Docker Desktop
     environment:
@@ -120,6 +121,14 @@ services:
       SQS_REPORT_QUEUE_URL: http://localstack:4566/000000000000/report-received
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}   # Ollama del host (parametrizable)
       LLM_MODEL: ${LLM_MODEL:-gemma3:27b}
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-120}      # s; sube si el modelo es grande / hay cola
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
+      # Memoria de conversación (ADR-0015): Postgres+pgvector + embeddings on-prem
+      PGVECTOR_DSN: postgresql://respuesta:respuesta@postgres:5432/respuesta
+      EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}   # vacío → memoria solo con ventana reciente
+      EMBED_DIM: ${EMBED_DIM:-768}
+      CHAT_RECENT_TURNS: ${CHAT_RECENT_TURNS:-6}
+      CHAT_RETRIEVAL_K: ${CHAT_RETRIEVAL_K:-4}
 
   output-service:
     build: ./apps/output-service
