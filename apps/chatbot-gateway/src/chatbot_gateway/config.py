@@ -13,6 +13,8 @@ class ChatbotConfig:
     report_queue_url: str = ""       # SQS: report.received (lo consume el core-backend/intake)
     entity_enrolled_queue_url: str = ""    # SQS: entity.enrolled (feedback "reporte completo", ADR-0016)
     enrollment_failed_queue_url: str = ""  # SQS: enrollment.failed (feedback de la foto, ADR-0016)
+    disambiguation_requested_queue_url: str = ""   # SQS: face.disambiguation.requested (consumir)
+    disambiguation_resolved_queue_url: str = ""    # SQS: face.disambiguation.resolved (publicar)
     ollama_url: str = "http://llm:11434"
     llm_model: str = "llama3.1:8b"   # modelo open cuantizado (ADR-0001), en la RTX 3090
     ollama_timeout: int = 120        # s; modelos grandes (27B) en frío superan 60s
@@ -36,6 +38,8 @@ class ChatbotConfig:
             report_queue_url=os.getenv("SQS_REPORT_QUEUE_URL", ""),
             entity_enrolled_queue_url=os.getenv("SQS_ENTITY_ENROLLED_URL", ""),
             enrollment_failed_queue_url=os.getenv("SQS_ENROLLMENT_FAILED_URL", ""),
+            disambiguation_requested_queue_url=os.getenv("SQS_FACE_DISAMBIGUATION_REQUESTED_URL", ""),
+            disambiguation_resolved_queue_url=os.getenv("SQS_DISAMBIGUATION_RESOLVED_URL", ""),
             ollama_url=os.getenv("OLLAMA_URL", "http://llm:11434"),
             llm_model=os.getenv("LLM_MODEL", "llama3.1:8b"),
             ollama_timeout=int(os.getenv("OLLAMA_TIMEOUT", "120")),

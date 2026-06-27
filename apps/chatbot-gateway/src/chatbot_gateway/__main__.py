@@ -42,7 +42,7 @@ def build_service(cfg: ChatbotConfig, pub) -> ChatbotService:
         llm=OllamaLlmClient(cfg.ollama_url, cfg.llm_model,
                             timeout=cfg.ollama_timeout, keep_alive=cfg.ollama_keep_alive),
         reply_pub=pub, report_pub=pub, event_log=NoopEventLog(),
-        conversations=store, embedder=embedder,
+        conversations=store, embedder=embedder, resolved_pub=pub,
     )
 
 
@@ -59,6 +59,11 @@ def build_consumers(cfg: ChatbotConfig, service: ChatbotService) -> list[SqsCons
         consumers.append(
             SqsConsumer(cfg.enrollment_failed_queue_url, cfg.aws_region, service.on_enrollment_failed,
                         cfg.max_messages, cfg.wait_time_seconds, name="enrollment.failed"))
+    if cfg.disambiguation_requested_queue_url:
+        consumers.append(
+            SqsConsumer(cfg.disambiguation_requested_queue_url, cfg.aws_region,
+                        service.on_face_disambiguation_requested,
+                        cfg.max_messages, cfg.wait_time_seconds, name="face.disambiguation.requested"))
     return consumers
 
 
@@ -68,7 +73,8 @@ def main() -> None:
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
     cfg = ChatbotConfig.from_env()
-    pub = SqsPublisher(cfg.reply_queue_url, cfg.report_queue_url, cfg.aws_region)
+    pub = SqsPublisher(cfg.reply_queue_url, cfg.report_queue_url, cfg.aws_region,
+                       resolved_queue_url=cfg.disambiguation_resolved_queue_url)
     service = build_service(cfg, pub)
     consumers = build_consumers(cfg, service)
     threads = [threading.Thread(target=c.start, name=c._name, daemon=True) for c in consumers]

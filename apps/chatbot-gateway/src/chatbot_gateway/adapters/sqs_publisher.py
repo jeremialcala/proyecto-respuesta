@@ -8,9 +8,11 @@ log = logging.getLogger(__name__)
 
 
 class SqsPublisher:
-    def __init__(self, reply_queue_url: str, report_queue_url: str, region: str) -> None:
+    def __init__(self, reply_queue_url: str, report_queue_url: str, region: str,
+                 resolved_queue_url: str = "") -> None:
         self._reply_url = reply_queue_url
         self._report_url = report_queue_url
+        self._resolved_url = resolved_queue_url   # face.disambiguation.resolved (ADR-0016)
         self._region = region
         self._client = None
 
@@ -34,3 +36,6 @@ class SqsPublisher:
 
     def publish_report(self, envelope: dict) -> None:
         self._send(self._report_url, envelope)
+
+    def publish_resolved(self, envelope: dict) -> None:
+        self._send(self._resolved_url, envelope)

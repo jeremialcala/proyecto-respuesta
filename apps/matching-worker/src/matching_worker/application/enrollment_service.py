@@ -141,7 +141,7 @@ class EnrollmentService:
             reporter=reporter,
         )
         self._pending.save(pending)
-        self._bus.publish("face.disambiguation.requested", {
+        req = {
             "disambiguation_id": pending.disambiguation_id,
             "entity_id": entity_id, "report_id": report_id,
             "conversation_key": conversation_key, "expires_at": pending.expires_at,
@@ -150,7 +150,9 @@ class EnrollmentService:
                  "bbox": _bbox_list(pf), "det_score": pf.det_score}
                 for pf in pending_faces
             ],
-        })
+        }
+        req.update(_reporter_fields(reporter))   # identidad para que el chatbot pregunte (ADR-0016)
+        self._bus.publish("face.disambiguation.requested", req)
         log.info("? desambiguación solicitada dis=%s entity_id=%s rostros=%d",
                  pending.disambiguation_id, entity_id, len(pending_faces))
 

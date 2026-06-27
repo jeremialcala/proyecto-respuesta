@@ -62,6 +62,10 @@ class SessionProfile:
     turn_count: int = 0
     report_emitted: bool = False             # evita re-publicar report.received en cada turno
     completion_notified: bool = False        # evita repetir el aviso de "reporte completo" (ADR-0016)
+    # Desambiguación multi-rostro en curso (ADR-0016): si está seteado, el próximo mensaje del
+    # usuario se interpreta como la elección del rostro, no como conversación normal.
+    pending_disambiguation_id: Optional[str] = None
+    pending_faces_count: int = 0
 
     @property
     def report_complete(self) -> bool:

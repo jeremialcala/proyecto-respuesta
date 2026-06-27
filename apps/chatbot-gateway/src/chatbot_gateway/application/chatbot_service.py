@@ -17,6 +17,7 @@ from ..config import ChatbotConfig
 from ..domain import guardrails
 from ..domain.conversation import (ConversationContext, SessionProfile, Turn,
                                    conversation_key)
+from ..domain.disambiguation import parse_selection
 from ..domain.models import InputCategory, ReportDraft
 from .events import build_envelope
 from .ports import (BodyCipher, ConversationStore, Embedder, EventLog, LlmClient,
@@ -40,11 +41,23 @@ _PHOTO_FEEDBACK = {
 }
 
 
+def _disambiguation_prompt(n: int) -> str:
+    return (f"Detecté {n} rostros en la foto que enviaste. Te los muestro numerados. ¿Cuál es la "
+            f"persona del reporte? Responde con el número (del 1 al {n}), o escribe «ninguno» si no "
+            f"aparece.")
+
+
+def _disambiguation_retry(n: int) -> str:
+    return f"No entendí. Responde con un número del 1 al {n}, o escribe «ninguno»."
+
+
 class Outcome(Enum):
     REPLIED = "replied"
     REPLIED_WITH_REPORT = "replied_with_report"
     BLOCKED = "blocked"
     OUTPUT_REJECTED = "output_rejected"
+    DISAMBIGUATION_PROMPTED = "disambiguation_prompted"   # se mostraron los rostros al reportante
+    DISAMBIGUATION_RESOLVED = "disambiguation_resolved"   # el reportante eligió (o descartó)
 
 
 @dataclass(frozen=True)
@@ -55,7 +68,8 @@ class HandleResult:
 class ChatbotService:
     def __init__(self, cfg: ChatbotConfig, cipher: BodyCipher, llm: LlmClient,
                  reply_pub: ReplyPublisher, report_pub: ReportPublisher, event_log: EventLog,
-                 conversations: ConversationStore, embedder: Embedder) -> None:
+                 conversations: ConversationStore, embedder: Embedder,
+                 resolved_pub=None) -> None:
         self._cfg = cfg
         self._cipher = cipher
         self._llm = llm
@@ -64,6 +78,7 @@ class ChatbotService:
         self._log = event_log
         self._convos = conversations
         self._embed = embedder
+        self._resolved = resolved_pub   # publica face.disambiguation.resolved (ADR-0016)
 
     def handle(self, inbound_text_envelope: dict) -> HandleResult:
         p = inbound_text_envelope.get("payload", {}) or {}
@@ -85,15 +100,20 @@ class ChatbotService:
 
         user_text = body.get("text", "")
 
+        # --- contexto de la conversación (memoria por contacto) ---
+        ctx = self._load_context(key, user_text)
+
+        # --- desambiguación pendiente: el mensaje es la elección del rostro, no conversación ---
+        if ctx.profile.pending_disambiguation_id:
+            return self._handle_disambiguation_reply(bot_id, channel, contact_ref, event_id,
+                                                     user_text, ctx)
+
         # --- riel de entrada ---
         screen = guardrails.screen_input(user_text)
         if screen.blocked:
             self._log.record_action(event_id, "input_rail", "BLOCKED", screen.reason)
             self._publish_reply(bot_id, channel, contact_ref, event_id, _SAFE_BLOCKED)
             return HandleResult(Outcome.BLOCKED)
-
-        # --- contexto de la conversación (memoria por contacto) ---
-        ctx = self._load_context(key, user_text)
 
         # --- LLM (no autoritativo), con contexto ---
         reply_text, draft = self._llm.converse(user_text, ctx)
@@ -154,6 +174,44 @@ class ChatbotService:
         self._publish_reply(bot_id, channel, contact_ref, envelope.get("event_id", ""), text)
         return HandleResult(Outcome.REPLIED)
 
+    # --- desambiguación multi-rostro (ADR-0016): pregunta al reportante cuál rostro es ---
+    def on_face_disambiguation_requested(self, envelope: dict) -> HandleResult:
+        """≥2 rostros en la foto: muestra las miniaturas numeradas y queda a la espera de la elección."""
+        p = envelope.get("payload", {}) or {}
+        bot_id, channel, contact_ref = p.get("bot_id", ""), p.get("channel", ""), p.get("contact_ref", "")
+        disambiguation_id = p.get("disambiguation_id")
+        faces = p.get("faces", []) or []
+        if not contact_ref or not disambiguation_id or len(faces) < 2:
+            return HandleResult(Outcome.REPLIED)   # sin con qué preguntar
+        key = conversation_key(bot_id, channel, contact_ref)
+        ctx = self._load_context(key, "")
+        crop_refs = [f.get("crop_ref") for f in faces if f.get("crop_ref")]
+        self._publish_reply(bot_id, channel, contact_ref, envelope.get("event_id", ""),
+                            _disambiguation_prompt(len(faces)), media_refs=crop_refs)
+        self._convos.save_profile(key, replace(
+            ctx.profile, pending_disambiguation_id=disambiguation_id, pending_faces_count=len(faces)))
+        return HandleResult(Outcome.DISAMBIGUATION_PROMPTED)
+
+    def _handle_disambiguation_reply(self, bot_id, channel, contact_ref, event_id, user_text,
+                                     ctx: ConversationContext) -> HandleResult:
+        """Interpreta la respuesta del reportante a una desambiguación pendiente y la resuelve."""
+        profile = ctx.profile
+        sel = parse_selection(user_text, profile.pending_faces_count)
+        if sel.kind == "invalid":
+            self._publish_reply(bot_id, channel, contact_ref, event_id,
+                                _disambiguation_retry(profile.pending_faces_count))
+            return HandleResult(Outcome.DISAMBIGUATION_PROMPTED)   # sigue pendiente
+        if sel.kind == "none":
+            self._publish_resolved(profile.pending_disambiguation_id, none=True)
+            ack = "Entendido, ninguno era la persona. Te pediré otra foto si hace falta."
+        else:
+            self._publish_resolved(profile.pending_disambiguation_id, index=sel.index)
+            ack = f"¡Gracias! Tomé el rostro #{sel.index + 1} para el reporte."
+        self._publish_reply(bot_id, channel, contact_ref, event_id, ack)
+        self._convos.save_profile(ctx.key, replace(
+            profile, pending_disambiguation_id=None, pending_faces_count=0))
+        return HandleResult(Outcome.DISAMBIGUATION_RESOLVED)
+
     # --- contexto ---
     def _load_context(self, key: str, query_text: str) -> ConversationContext:
         q = self._embed.embed(query_text)
@@ -161,12 +219,24 @@ class ChatbotService:
                                  top_k=self._cfg.retrieval_k)
 
     # --- publicación ---
-    def _publish_reply(self, bot_id, channel, contact_ref, event_id, text) -> None:
-        self._reply.publish_reply(build_envelope("outbound.reply", {
+    def _publish_reply(self, bot_id, channel, contact_ref, event_id, text, media_refs=None) -> None:
+        payload = {
             "bot_id": bot_id, "channel": channel, "contact_ref": contact_ref,
             "jwe_body": text,   # el servicio de salida cifra/entrega; MVP texto plano
-        }, self._cfg.producer))
+        }
+        if media_refs:   # miniaturas a mostrar (desambiguación, ADR-0016); el servicio de salida las envía
+            payload["media_refs"] = media_refs
+        self._reply.publish_reply(build_envelope("outbound.reply", payload, self._cfg.producer))
         self._log.record_action(event_id, "reply", "SENT", "")
+
+    def _publish_resolved(self, disambiguation_id, *, index=None, none=False) -> None:
+        payload = {"disambiguation_id": disambiguation_id}
+        if none:
+            payload["action"] = "none_of_these"
+        else:
+            payload["selected_index"] = index
+        self._resolved.publish_resolved(
+            build_envelope("face.disambiguation.resolved", payload, self._cfg.producer))
 
     def _publish_report(self, bot_id, channel, contact_ref, event_id, profile: SessionProfile) -> None:
         self._report.publish_report(build_envelope("report.received", {

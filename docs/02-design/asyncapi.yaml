@@ -360,6 +360,9 @@ components:
         entity_id: { type: string }
         report_id: { type: string }
         conversation_key: { type: string }
+        contact_ref: { type: string, description: 'Reportante a quien preguntar (ADR-0016).' }
+        bot_id: { type: string }
+        channel: { type: string }
         expires_at: { type: string, format: date-time }
         faces:
           type: array

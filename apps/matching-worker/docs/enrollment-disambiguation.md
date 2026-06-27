@@ -173,6 +173,13 @@ disparar re-matching de reportes de "encontrado" previos.
   "conversation_key": "…" }
 ```
 
+> **Render de los rostros en el chat (ADR-0017):** el evento lleva el `crop_ref` interno (puntero a
+> la bóveda), **no** una URL pública. Quien entrega el medio al reportante (`chatbot-gateway` →
+> `output-service`) pide al **media-gateway** una concesión sobre cada `crop_ref` en el momento del
+> envío (`POST /grants`, `purpose=disambiguation_crop`, `audience=meta_fetchers`) y manda a Meta la
+> **URL firmada** como `link`. Al resolver/expirar la desambiguación se revocan esas concesiones
+> (`POST /grants:revoke-by-ref {report_id}`) junto con la purga de los recortes.
+
 **`face.disambiguation.requested`** — producer `matching-worker` → consume `chatbot-gateway`.
 ```json
 { "disambiguation_id": "dis_…", "entity_id": "ent_…", "report_id": "rep_…",

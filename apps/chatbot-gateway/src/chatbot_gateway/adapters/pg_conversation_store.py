@@ -37,7 +37,8 @@ CREATE INDEX IF NOT EXISTS chat_turns_recent ON chat_turns (conv_key, seq DESC);
 """
 
 _PROFILE_FIELDS = ("declared_name", "intention", "subject_name", "id_type", "id_number",
-                   "notes", "turn_count", "report_emitted", "completion_notified")
+                   "notes", "turn_count", "report_emitted", "completion_notified",
+                   "pending_disambiguation_id", "pending_faces_count")
 
 
 def _profile_to_json(p: SessionProfile) -> str:

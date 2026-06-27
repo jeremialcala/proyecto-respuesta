@@ -123,6 +123,9 @@ services:
       # Feedback de enrolamiento de la foto al reportante (ADR-0016)
       SQS_ENTITY_ENROLLED_URL: http://localstack:4566/000000000000/entity-enrolled
       SQS_ENROLLMENT_FAILED_URL: http://localstack:4566/000000000000/enrollment-failed
+      # Desambiguación multi-rostro (ADR-0016): consume requested, publica resolved
+      SQS_FACE_DISAMBIGUATION_REQUESTED_URL: http://localstack:4566/000000000000/face-disambiguation-requested
+      SQS_DISAMBIGUATION_RESOLVED_URL: http://localstack:4566/000000000000/face-disambiguation-resolved
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}   # Ollama del host (parametrizable)
       LLM_MODEL: ${LLM_MODEL:-gemma3:27b}
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-120}      # s; sube si el modelo es grande / hay cola

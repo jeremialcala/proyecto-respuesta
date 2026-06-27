@@ -4,6 +4,7 @@ import json
 from chatbot_gateway.config import ChatbotConfig
 from chatbot_gateway.application.chatbot_service import ChatbotService, Outcome
 from chatbot_gateway.adapters.memory_conversation_store import MemoryConversationStore
+from chatbot_gateway.domain.conversation import conversation_key
 from chatbot_gateway.domain.models import ReportDraft
 
 
@@ -43,12 +44,16 @@ class FakePub:
     def __init__(self):
         self.replies = []
         self.reports = []
+        self.resolved = []
 
     def publish_reply(self, env):
         self.replies.append(env)
 
     def publish_report(self, env):
         self.reports.append(env)
+
+    def publish_resolved(self, env):
+        self.resolved.append(env)
 
 
 class Log:
@@ -64,7 +69,7 @@ def _svc(llm, store=None, embedder=None):
     svc = ChatbotService(ChatbotConfig(producer="chatbot-gateway"),
                          FakeCipher(), llm, pub, pub, log,
                          conversations=store or MemoryConversationStore(),
-                         embedder=embedder or FakeEmbedder())
+                         embedder=embedder or FakeEmbedder(), resolved_pub=pub)
     return svc, pub, log
 
 
@@ -211,6 +216,62 @@ def test_enrollment_failed_invalid_selection_is_silent():
     svc, pub, _ = _svc(FakeLlm())
     svc.on_enrollment_failed(_failed_env("invalid_selection"))
     assert pub.replies == []                              # sin acción del usuario → no se le molesta
+
+
+# --- desambiguación multi-rostro (ADR-0016) ---
+
+def _disambig_env(contact="584120000000", dis="dis_1", n=2):
+    faces = [{"index": i, "crop_ref": f"s3://b/crop/{i}", "bbox": [0, 0, 1, 1], "det_score": 0.9}
+             for i in range(n)]
+    return {"event_id": "evt-dis", "event_type": "face.disambiguation.requested",
+            "payload": {"disambiguation_id": dis, "entity_id": "ent_1", "report_id": "rep_1",
+                        "bot_id": "bot-1", "channel": "whatsapp", "contact_ref": contact,
+                        "faces": faces}}
+
+
+def test_disambiguation_requested_prompts_with_thumbnails_and_sets_state():
+    store = MemoryConversationStore()
+    svc, pub, _ = _svc(FakeLlm(), store=store)
+    res = svc.on_face_disambiguation_requested(_disambig_env(n=3))
+    assert res.outcome is Outcome.DISAMBIGUATION_PROMPTED
+    assert "3" in pub.replies[0]["payload"]["jwe_body"]
+    assert pub.replies[0]["payload"]["media_refs"] == ["s3://b/crop/0", "s3://b/crop/1", "s3://b/crop/2"]
+    # el siguiente mensaje del contacto se interpretará como selección
+    ctx = store.load(conversation_key("bot-1", "whatsapp", "584120000000"), [], recent_n=0, top_k=0)
+    assert ctx.profile.pending_disambiguation_id == "dis_1" and ctx.profile.pending_faces_count == 3
+
+
+def test_disambiguation_reply_number_publishes_resolved_and_clears_state():
+    store = MemoryConversationStore()
+    llm = FakeLlm()
+    svc, pub, _ = _svc(llm, store=store)
+    svc.on_face_disambiguation_requested(_disambig_env(n=2))
+    res = svc.handle(_env({"kind": "text", "text": "el 2"}))
+    assert res.outcome is Outcome.DISAMBIGUATION_RESOLVED
+    assert llm.calls == []                              # no se invoca al LLM con la elección
+    assert pub.resolved[0]["payload"] == {"disambiguation_id": "dis_1", "selected_index": 1}
+    # estado limpiado → un mensaje normal vuelve a ir al LLM
+    svc.handle(_env({"kind": "text", "text": "gracias"}))
+    assert llm.calls == ["gracias"]
+
+
+def test_disambiguation_reply_none_of_these():
+    store = MemoryConversationStore()
+    svc, pub, _ = _svc(FakeLlm(), store=store)
+    svc.on_face_disambiguation_requested(_disambig_env(n=2))
+    svc.handle(_env({"kind": "text", "text": "ninguno"}))
+    assert pub.resolved[0]["payload"] == {"disambiguation_id": "dis_1", "action": "none_of_these"}
+
+
+def test_disambiguation_invalid_reprompts_and_keeps_state():
+    store = MemoryConversationStore()
+    svc, pub, _ = _svc(FakeLlm(), store=store)
+    svc.on_face_disambiguation_requested(_disambig_env(n=2))
+    res = svc.handle(_env({"kind": "text", "text": "no sé"}))
+    assert res.outcome is Outcome.DISAMBIGUATION_PROMPTED
+    assert pub.resolved == []                           # no resuelve con respuesta inválida
+    ctx = store.load(conversation_key("bot-1", "whatsapp", "584120000000"), [], recent_n=0, top_k=0)
+    assert ctx.profile.pending_disambiguation_id == "dis_1"   # sigue pendiente
 
 
 def test_separate_contacts_have_isolated_context():
