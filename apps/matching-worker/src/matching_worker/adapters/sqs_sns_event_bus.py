@@ -7,8 +7,11 @@ de forma perezosa. Para cuerpos con PII/biométrico, cifrar en JWE antes de publ
 from __future__ import annotations
 
 import json
+import logging
 
 from ..application.events import build_envelope
+
+log = logging.getLogger(__name__)
 
 
 class SnsEventBus:
@@ -35,3 +38,4 @@ class SnsEventBus:
                 "event_id": {"DataType": "String", "StringValue": envelope["event_id"]},
             },
         )
+        log.info("⇢ publicado %s event_id=%s → SNS %s", event, envelope["event_id"], self._topic_arn)

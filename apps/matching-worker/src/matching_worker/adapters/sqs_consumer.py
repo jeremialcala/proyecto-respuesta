@@ -7,8 +7,11 @@ los manda a la DLQ (ADR-0005/0012), donde el Gestor de DLQ los audita. `boto3` s
 from __future__ import annotations
 
 import json
+import logging
 
 from ..application.matching_service import MatchingService, ProbeContext
+
+log = logging.getLogger(__name__)
 
 
 class SqsConsumer:
@@ -46,13 +49,13 @@ class SqsConsumer:
             age_gap_years=float(payload.get("age_gap_years", 0.0)),
         )
 
-    def _handle(self, body: str) -> None:
-        envelope = json.loads(body)
+    def _handle(self, envelope: dict) -> None:
         self._service.resolve(self._to_probe(envelope))
 
     def start(self) -> None:
         client = self._ensure_client()
         self._running = True
+        log.info("escuchando report.ingested en %s", self._queue_url)
         while self._running:
             resp = client.receive_message(
                 QueueUrl=self._queue_url,
@@ -60,14 +63,23 @@ class SqsConsumer:
                 WaitTimeSeconds=self._wait,
                 MessageAttributeNames=["All"],
             )
-            for msg in resp.get("Messages", []):
+            msgs = resp.get("Messages", [])
+            if msgs:
+                log.info("recibidos %d mensaje(s)", len(msgs))
+            for msg in msgs:
+                eid = "?"
                 try:
-                    self._handle(msg["Body"])
+                    envelope = json.loads(msg["Body"])
+                    eid = envelope.get("event_id", "?")
+                    log.info("→ procesando event_id=%s event_type=%s", eid, envelope.get("event_type", "?"))
+                    self._handle(envelope)
                 except Exception:
                     # No borrar → redrive a DLQ tras maxReceiveCount (ADR-0012). Falla visible.
+                    log.exception("✗ fallo event_id=%s → sin borrar (redrive a DLQ)", eid)
                     continue
                 else:
                     client.delete_message(QueueUrl=self._queue_url, ReceiptHandle=msg["ReceiptHandle"])
+                    log.info("✓ procesado event_id=%s → borrado", eid)
 
     def stop(self) -> None:
         self._running = False

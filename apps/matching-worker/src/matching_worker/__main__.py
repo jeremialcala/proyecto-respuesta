@@ -1,6 +1,9 @@
 """Punto de entrada del worker (wiring). AWS SQS/SNS + ArcFace + pgvector/FAISS (ADR-0012/0013)."""
 from __future__ import annotations
 
+import logging
+import os
+
 from .application.matching_service import MatchingService
 from .config import WorkerConfig
 from .adapters.faiss_index import FaissAnnIndex
@@ -25,6 +28,10 @@ def build_consumer(cfg: WorkerConfig) -> SqsConsumer:
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    )
     cfg = WorkerConfig.from_env()
     consumer = build_consumer(cfg)
     consumer.start()

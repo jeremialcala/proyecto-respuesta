@@ -6,6 +6,9 @@ biométricos (el binario no viaja por el webhook; solo el JSON crudo del mensaje
 from __future__ import annotations
 
 import json
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class SqsRawPublisher:
@@ -30,3 +33,4 @@ class SqsRawPublisher:
                 "event_id": {"DataType": "String", "StringValue": envelope["event_id"]},
             },
         )
+        log.info("⇢ publicado meta.received event_id=%s → %s", envelope["event_id"], self._queue_url)

@@ -1,6 +1,9 @@
 """Arranque del consumidor report.received (worker). La API REST se sirve con uvicorn (ver Dockerfile)."""
 from __future__ import annotations
 
+import logging
+import os
+
 from .application.chained_audit import ChainedAudit
 from .application.intake_service import IntakeService
 from .adapters.pg_stores import PgStores
@@ -19,6 +22,10 @@ def build_consumer(cfg: CoreConfig) -> SqsConsumer:
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    )
     build_consumer(CoreConfig.from_env()).start()
 
 

@@ -21,3 +21,12 @@ class EventLog(Protocol):
     """Traza por pasos (Event + EventAction) para auditoría (ADR-0005). No-op en MVP."""
 
     def record_action(self, event_id: str, action: str, status: str, detail: str = "") -> None: ...
+
+
+class WindowStore(Protocol):
+    """Abre la ventana de servicio de 24h de WhatsApp al recibir un mensaje del usuario.
+
+    El `output-service` la consulta para decidir texto libre (dentro) vs plantilla HSM (fuera).
+    """
+
+    def mark(self, contact_ref: str) -> None: ...

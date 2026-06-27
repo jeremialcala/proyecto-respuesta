@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import json
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class SnsEventPublisher:
@@ -25,3 +28,4 @@ class SnsEventPublisher:
                 "event_id": {"DataType": "String", "StringValue": envelope["event_id"]},
             },
         )
+        log.info("⇢ publicado %s event_id=%s → SNS %s", envelope["event_type"], envelope["event_id"], self._arn)

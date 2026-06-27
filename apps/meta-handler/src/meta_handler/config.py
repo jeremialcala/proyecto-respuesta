@@ -11,6 +11,8 @@ class HandlerConfig:
     input_queue_url: str = ""                       # SQS: meta.received (lo publica el gateway)
     text_queue_url: str = ""                        # SQS: inbound.text  → LLM on-prem
     media_queue_url: str = ""                       # SQS: inbound.media → Worker de Bóveda
+    redis_url: str = "redis://localhost:6379/0"     # ventana de 24h (la consume el output-service)
+    window_ttl_seconds: int = 86400                 # 24h de WhatsApp
     max_messages: int = 10
     wait_time_seconds: int = 20
     producer: str = "meta-handler"
@@ -22,6 +24,8 @@ class HandlerConfig:
             input_queue_url=os.getenv("SQS_INPUT_QUEUE_URL", ""),
             text_queue_url=os.getenv("SQS_TEXT_QUEUE_URL", ""),
             media_queue_url=os.getenv("SQS_MEDIA_QUEUE_URL", ""),
+            redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+            window_ttl_seconds=int(os.getenv("WA_WINDOW_TTL", "86400")),
             max_messages=int(os.getenv("SQS_MAX_MESSAGES", "10")),
             wait_time_seconds=int(os.getenv("SQS_WAIT_SECONDS", "20")),
         )

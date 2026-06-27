@@ -31,16 +31,20 @@ services:
   localstack:
     image: localstack/localstack:3
     environment:
-      SERVICES: sqs,sns
+      SERVICES: sqs,sns,s3,kms
       DEBUG: "0"
+      AWS_DEFAULT_REGION: sa-east-1   # init y healthcheck operan en la región de los servicios (ADR-0006)
     ports: ["4566:4566"]
     volumes:
       - "./deploy/localstack/init:/etc/localstack/init/ready.d:ro"
     healthcheck:
-      test: ["CMD-SHELL", "awslocal sqs list-queues >/dev/null 2>&1 || exit 1"]
+      # Sondea el ÚLTIMO recurso que crea el init (KMS alias): así "service_healthy" implica
+      # que las colas/topics ya existen y los consumers no arrancan antes (evita el race de QueueDoesNotExist).
+      test: ["CMD-SHELL", "awslocal kms describe-key --key-id alias/respuesta-vault >/dev/null 2>&1 || exit 1"]
       interval: 5s
       timeout: 5s
-      retries: 15
+      retries: 30
+      start_period: 20s
 
   webhook-gateway:
     build: ./apps/webhook-gateway
@@ -63,6 +67,7 @@ services:
     build: ./apps/meta-handler
     depends_on:
       localstack: {condition: service_healthy}
+      redis: {condition: service_healthy}
     environment:
       AWS_REGION: sa-east-1
       AWS_ACCESS_KEY_ID: test
@@ -71,6 +76,7 @@ services:
       SQS_INPUT_QUEUE_URL: http://localstack:4566/000000000000/meta-received
       SQS_TEXT_QUEUE_URL: http://localstack:4566/000000000000/inbound-text
       SQS_MEDIA_QUEUE_URL: http://localstack:4566/000000000000/inbound-media
+      REDIS_URL: redis://redis:6379/0   # abre la ventana de 24h que consume el output-service
 
   vault-worker:
     build: ./apps/vault-worker
@@ -87,11 +93,13 @@ services:
       MEDIA_BUCKET: respuesta-media
       QUARANTINE_BUCKET: respuesta-quarantine
       KMS_KEY_ID: alias/respuesta-vault
-      META_GRAPH_TOKEN: graph-token-dev
+      META_GRAPH_TOKEN: ${META_GRAPH_TOKEN:-graph-token-dev}
 
+  # Ollama empaquetado: opt-in con `--profile llm`. Por defecto el chatbot usa el Ollama del HOST
+  # (OLLAMA_URL apunta a host.docker.internal:11434), así no se levanta un segundo Ollama.
   llm:
     image: ollama/ollama:latest
-    profiles: ["chat"]
+    profiles: ["llm"]
     ports: ["11434:11434"]
     volumes: ["ollama:/root/.ollama"]
 
@@ -100,6 +108,8 @@ services:
     profiles: ["chat"]
     depends_on:
       localstack: {condition: service_healthy}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # resuelve el Ollama del host en Linux/Docker Desktop
     environment:
       AWS_REGION: sa-east-1
       AWS_ACCESS_KEY_ID: test
@@ -108,8 +118,8 @@ services:
       SQS_INPUT_QUEUE_URL: http://localstack:4566/000000000000/inbound-text
       SQS_REPLY_QUEUE_URL: http://localstack:4566/000000000000/outbound-reply
       SQS_REPORT_QUEUE_URL: http://localstack:4566/000000000000/report-received
-      OLLAMA_URL: http://llm:11434
-      LLM_MODEL: llama3.1:8b
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}   # Ollama del host (parametrizable)
+      LLM_MODEL: ${LLM_MODEL:-gemma3:27b}
 
   output-service:
     build: ./apps/output-service
@@ -123,8 +133,11 @@ services:
       AWS_ENDPOINT_URL: http://localstack:4566
       SQS_INPUT_QUEUE_URL: http://localstack:4566/000000000000/outbound-reply
       REDIS_URL: redis://redis:6379/0
-      META_GRAPH_TOKEN: graph-token-dev
-      WA_PHONE_NUMBER_ID: "000000000000000"
+      META_GRAPH_TOKEN: ${META_GRAPH_TOKEN:-graph-token-dev}
+      WA_PHONE_NUMBER_ID: ${WA_PHONE_NUMBER_ID:-000000000000000}
+      OUTPUT_DRY_RUN: ${OUTPUT_DRY_RUN:-true}   # dev local: con token real, ponlo en false (.env)
+      HSM_TEMPLATE: ${HSM_TEMPLATE:-jornada_update}   # plantilla aprobada para envíos fuera de la ventana 24h
+      HSM_LANG: ${HSM_LANG:-es}
 
   core-backend:
     build: ./apps/core-backend

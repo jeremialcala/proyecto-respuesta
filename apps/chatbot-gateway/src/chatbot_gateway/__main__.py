@@ -1,6 +1,9 @@
 """Arranque de la Pasarela de Chatbot (wiring). inbound.text → rieles+LLM → outbound.reply/report.received."""
 from __future__ import annotations
 
+import logging
+import os
+
 from .application.chatbot_service import ChatbotService
 from .adapters.noop_event_log import NoopEventLog
 from .adapters.ollama_llm import OllamaLlmClient
@@ -23,6 +26,10 @@ def build_consumer(cfg: ChatbotConfig) -> SqsConsumer:
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    )
     build_consumer(ChatbotConfig.from_env()).start()
 
 

@@ -1,6 +1,9 @@
 """Arranque del Worker de Bóveda (wiring). inbound.media → bóveda cifrada → media.stored."""
 from __future__ import annotations
 
+import logging
+import os
+
 from .application.vault_service import VaultService
 from .adapters.graph_downloader import GraphMediaDownloader
 from .adapters.kms_envelope_cipher import KmsEnvelopeCipher
@@ -27,6 +30,10 @@ def build_consumer(cfg: VaultConfig) -> SqsConsumer:
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    )
     build_consumer(VaultConfig.from_env()).start()
 
 

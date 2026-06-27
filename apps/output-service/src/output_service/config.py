@@ -16,6 +16,7 @@ class OutputConfig:
     max_messages: int = 10
     wait_time_seconds: int = 20
     producer: str = "output-service"
+    dry_run: bool = False            # dev local: no llama a la Graph API, solo loguea el envío
 
     @staticmethod
     def from_env() -> "OutputConfig":
@@ -28,4 +29,5 @@ class OutputConfig:
             hsm_lang=os.getenv("HSM_LANG", "es"),
             max_messages=int(os.getenv("SQS_MAX_MESSAGES", "10")),
             wait_time_seconds=int(os.getenv("SQS_WAIT_SECONDS", "20")),
+            dry_run=os.getenv("OUTPUT_DRY_RUN", "false").lower() in ("1", "true", "yes"),
         )

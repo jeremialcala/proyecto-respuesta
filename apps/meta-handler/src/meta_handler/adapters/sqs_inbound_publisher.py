@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import json
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class SqsInboundPublisher:
@@ -26,6 +29,7 @@ class SqsInboundPublisher:
                 "event_id": {"DataType": "String", "StringValue": envelope["event_id"]},
             },
         )
+        log.info("⇢ publicado %s event_id=%s → %s", envelope["event_type"], envelope["event_id"], url)
 
     def publish_text(self, envelope: dict) -> None:
         self._send(self._text_url, envelope)

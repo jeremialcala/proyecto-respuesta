@@ -15,7 +15,7 @@ from ..config import HandlerConfig
 from ..domain.models import Channel, MessageType, NormalizedMessage
 from ..domain.normalize import normalize
 from .events import build_envelope
-from .ports import BodyCipher, EventLog, InboundPublisher
+from .ports import BodyCipher, EventLog, InboundPublisher, WindowStore
 
 
 @dataclass(frozen=True)
@@ -25,13 +25,22 @@ class DispatchResult:
     skipped: int = 0
 
 
+class _NoopWindowStore:
+    """Default sin Redis (p. ej. tests): no abre ninguna ventana."""
+
+    def mark(self, contact_ref: str) -> None:  # noqa: D401
+        return None
+
+
 class HandlerService:
     def __init__(self, cfg: HandlerConfig, publisher: InboundPublisher,
-                 cipher: BodyCipher, event_log: EventLog) -> None:
+                 cipher: BodyCipher, event_log: EventLog,
+                 window: WindowStore | None = None) -> None:
         self._cfg = cfg
         self._pub = publisher
         self._cipher = cipher
         self._log = event_log
+        self._window = window or _NoopWindowStore()
 
     def handle(self, meta_received_envelope: dict) -> DispatchResult:
         payload = meta_received_envelope.get("payload", {}) or {}
@@ -45,6 +54,8 @@ class HandlerService:
                 self._log.record_action(event_id, "normalize", "SKIP", f"canal {msg.channel.value}")
                 skipped += 1
                 continue
+            # El usuario escribió → abre la ventana de 24h (habilita texto libre en la respuesta).
+            self._window.mark(msg.contact_ref)
             if msg.type is MessageType.IMAGE:
                 self._pub.publish_media(self._media_envelope(bot_id, msg))
                 self._log.record_action(event_id, "dispatch_media", "OK", msg.message_id)

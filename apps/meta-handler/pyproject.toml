@@ -6,6 +6,7 @@ requires-python = ">=3.10"
 
 dependencies = [
     "boto3>=1.34",   # SQS (consume meta.received; publica inbound.text/inbound.media)
+    "redis>=5.0",    # abre la ventana de 24h por contacto (la consume el output-service)
 ]
 
 [project.optional-dependencies]

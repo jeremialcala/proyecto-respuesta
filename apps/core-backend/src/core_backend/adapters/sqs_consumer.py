@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from ..application.intake_service import IntakeService
+
+log = logging.getLogger(__name__)
 
 
 class SqsConsumer:
@@ -26,17 +29,27 @@ class SqsConsumer:
     def start(self) -> None:
         client = self._ensure()
         self._running = True
+        log.info("escuchando report.received en %s", self._queue_url)
         while self._running:
             resp = client.receive_message(
                 QueueUrl=self._queue_url, MaxNumberOfMessages=self._max,
                 WaitTimeSeconds=self._wait, MessageAttributeNames=["All"])
-            for m in resp.get("Messages", []):
+            msgs = resp.get("Messages", [])
+            if msgs:
+                log.info("recibidos %d mensaje(s)", len(msgs))
+            for m in msgs:
+                eid = "?"
                 try:
-                    self._service.handle(json.loads(m["Body"]))
+                    body = json.loads(m["Body"])
+                    eid = body.get("event_id", "?")
+                    log.info("→ procesando event_id=%s event_type=%s", eid, body.get("event_type", "?"))
+                    self._service.handle(body)
                 except Exception:
+                    log.exception("✗ fallo event_id=%s → sin borrar (redrive a DLQ)", eid)
                     continue
                 else:
                     client.delete_message(QueueUrl=self._queue_url, ReceiptHandle=m["ReceiptHandle"])
+                    log.info("✓ procesado event_id=%s → borrado", eid)
 
     def stop(self) -> None:
         self._running = False

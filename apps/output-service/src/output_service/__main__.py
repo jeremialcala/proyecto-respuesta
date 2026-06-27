@@ -1,6 +1,9 @@
 """Arranque del Servicio de Salida (wiring). outbound.reply → Graph API (texto/HSM)."""
 from __future__ import annotations
 
+import logging
+import os
+
 from .application.output_service import OutputService
 from .adapters.graph_sender import GraphSender
 from .adapters.noop_event_log import NoopEventLog
@@ -15,7 +18,7 @@ def build_consumer(cfg: OutputConfig) -> SqsConsumer:
         cfg,
         cipher=PassthroughCipher(),
         window=RedisWindowStore(cfg.redis_url),
-        sender=GraphSender(cfg.graph_api_base),
+        sender=GraphSender(cfg.graph_api_base, dry_run=cfg.dry_run),
         event_log=NoopEventLog(),
     )
     return SqsConsumer(cfg.input_queue_url, cfg.aws_region, service,
@@ -23,6 +26,10 @@ def build_consumer(cfg: OutputConfig) -> SqsConsumer:
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    )
     build_consumer(OutputConfig.from_env()).start()
 
 
