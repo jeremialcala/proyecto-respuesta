@@ -111,6 +111,34 @@ channels:
     publish:
       operationId: onNotificationSent
       message: { $ref: '#/components/messages/NotificationSent' }
+  entity.enrolled:
+    description: >-
+      El rostro del sujeto quedó enlazado a su entidad en el índice biométrico (ADR-0016). Puede
+      disparar re-matching de reportes de "encontrado" previos al enrolamiento.
+    publish:
+      operationId: onEntityEnrolled
+      message: { $ref: '#/components/messages/EntityEnrolled' }
+  enrollment.failed:
+    description: >-
+      No se pudo enrolar (sin rostro, baja calidad, sujeto ausente, expirado o selección inválida).
+      El chatbot guía al reportante a reenviar una foto (ADR-0016).
+    publish:
+      operationId: onEnrollmentFailed
+      message: { $ref: '#/components/messages/EnrollmentFailed' }
+  face.disambiguation.requested:
+    description: >-
+      La foto trae ≥2 rostros; el worker pide al reportante (vía chatbot) que elija cuál es el
+      desaparecido, adjuntando recortes numerados (ADR-0016). No hay auto-resolución (ADR-0001/0004).
+    publish:
+      operationId: onFaceDisambiguationRequested
+      message: { $ref: '#/components/messages/FaceDisambiguationRequested' }
+  face.disambiguation.resolved:
+    description: >-
+      Respuesta del reportante: índice del rostro elegido o "ninguno". El worker enrola solo ese
+      rostro y purga el resto (minimización GDPR, ADR-0016).
+    subscribe:
+      operationId: consumeFaceDisambiguationResolved
+      message: { $ref: '#/components/messages/FaceDisambiguationResolved' }
 
 components:
   messages:
@@ -153,6 +181,18 @@ components:
     NotificationSent:
       name: NotificationSent
       payload: { $ref: '#/components/schemas/NotificationSent' }
+    EntityEnrolled:
+      name: EntityEnrolled
+      payload: { $ref: '#/components/schemas/EntityEnrolled' }
+    EnrollmentFailed:
+      name: EnrollmentFailed
+      payload: { $ref: '#/components/schemas/EnrollmentFailed' }
+    FaceDisambiguationRequested:
+      name: FaceDisambiguationRequested
+      payload: { $ref: '#/components/schemas/FaceDisambiguationRequested' }
+    FaceDisambiguationResolved:
+      name: FaceDisambiguationResolved
+      payload: { $ref: '#/components/schemas/FaceDisambiguationResolved' }
 
   schemas:
     MetaChannel:
@@ -252,6 +292,83 @@ components:
     Routing:
       type: string
       enum: [discard, coordinator, fuse]
+    BBox:
+      type: array
+      description: 'Caja del rostro [x1, y1, x2, y2] en píxeles sobre la imagen original.'
+      items: { type: integer }
+      minItems: 4
+      maxItems: 4
+    FaceQuality:
+      type: object
+      properties:
+        size_px: { type: integer, description: 'Lado mínimo del rostro en píxeles.' }
+        blur_var: { type: number, description: 'Varianza del Laplaciano (más bajo = más borroso).' }
+    EntityEnrolled:
+      type: object
+      description: 'Sujeto enlazado a su huella en el índice biométrico 512-d (ADR-0013/0016).'
+      required: [entity_id]
+      properties:
+        entity_id: { type: string }
+        report_id: { type: string }
+        face_quality: { $ref: '#/components/schemas/FaceQuality' }
+        det_score: { type: number, minimum: 0, maximum: 1 }
+        source:
+          type: string
+          enum: [report.ingested, face.disambiguation.resolved]
+          description: 'Evento que originó el enrolamiento.'
+    EnrollmentFailed:
+      type: object
+      description: 'Enrolamiento no realizado; el chatbot solicita acción al reportante (ADR-0016).'
+      required: [entity_id, reason]
+      properties:
+        entity_id: { type: string }
+        report_id: { type: string }
+        reason:
+          type: string
+          enum: [no_face, low_quality, no_subject_in_photo, expired, invalid_selection]
+          description: 'Motivo del fallo de enrolamiento.'
+        conversation_key:
+          type: string
+          description: 'Sesión del reportante para responderle (ADR-0015).'
+    PendingFaceRef:
+      type: object
+      description: 'Rostro candidato presentado al reportante para que elija (sin embedding en el evento).'
+      required: [index, bbox]
+      properties:
+        index: { type: integer, minimum: 0 }
+        crop_ref:
+          type: string
+          description: 'Puntero al recorte cifrado y efímero en la bóveda (ADR-0008).'
+        bbox: { $ref: '#/components/schemas/BBox' }
+        det_score: { type: number, minimum: 0, maximum: 1 }
+    FaceDisambiguationRequested:
+      type: object
+      description: 'Solicitud de desambiguación: ≥2 rostros, el reportante debe elegir (ADR-0016).'
+      required: [disambiguation_id, entity_id, faces]
+      properties:
+        disambiguation_id: { type: string }
+        entity_id: { type: string }
+        report_id: { type: string }
+        conversation_key: { type: string }
+        expires_at: { type: string, format: date-time }
+        faces:
+          type: array
+          minItems: 2
+          items: { $ref: '#/components/schemas/PendingFaceRef' }
+    FaceDisambiguationResolved:
+      type: object
+      description: 'Respuesta del reportante: índice elegido o "ninguno de estos" (ADR-0016).'
+      required: [disambiguation_id]
+      properties:
+        disambiguation_id: { type: string }
+        selected_index:
+          type: integer
+          minimum: 0
+          description: 'Índice del rostro elegido. Ausente si action=none_of_these.'
+        action:
+          type: string
+          enum: [none_of_these]
+          description: 'El sujeto no está en la foto; pedir otra.'
     ReportRef:
       type: object
       required: [report_id, intention]

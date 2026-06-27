@@ -72,9 +72,9 @@ class ArcFaceParams:
 
 @dataclass(frozen=True)
 class WorkerConfig:
-    """Configuración de runtime leída del entorno (12-factor). AWS SQS/SNS — ADR-0012."""
+    """Configuración de runtime leída del entorno (12-factor). AWS SQS/SNS — ADR-0012/0016."""
     aws_region: str = "sa-east-1"                  # ADR-0006
-    input_queue_url: str = ""                      # SQS: report.ingested
+    input_queue_url: str = ""                      # SQS: report.ingested (→ enrolamiento, ADR-0016)
     output_topic_arn: str = ""                     # SNS: candidate.generated (fan-out)
     pgvector_dsn: str = ""                          # fuente de verdad (ADR-0007)
     arcface_model_root: str = "/models/insightface"
@@ -82,9 +82,19 @@ class WorkerConfig:
     max_messages: int = 10                         # SQS batch
     wait_time_seconds: int = 20                     # long polling
     producer: str = "matching-worker"
+    # --- enrolamiento y desambiguación (ADR-0016) ---
+    disambiguation_resolved_queue_url: str = ""    # SQS: face.disambiguation.resolved
+    entity_enrolled_topic_arn: str = ""            # SNS: entity.enrolled
+    enrollment_failed_topic_arn: str = ""          # SNS: enrollment.failed
+    disambiguation_requested_topic_arn: str = ""   # SNS: face.disambiguation.requested
+    media_bucket: str = "respuesta-media"          # bóveda S3 (ADR-0005/0008)
+    crops_bucket: str = ""                          # recortes efímeros; por defecto = media_bucket
+    pending_ttl_seconds: int = 86400               # TTL del PendingEnrollment (alinear ADR-0007/0015)
+    purge_interval_seconds: int = 3600             # cada cuánto corre purge_expired
 
     @staticmethod
     def from_env() -> "WorkerConfig":
+        media_bucket = os.getenv("MEDIA_BUCKET", "respuesta-media")
         return WorkerConfig(
             aws_region=os.getenv("AWS_REGION", "sa-east-1"),
             input_queue_url=os.getenv("SQS_INPUT_QUEUE_URL", ""),
@@ -94,4 +104,12 @@ class WorkerConfig:
             top_k=int(os.getenv("MATCH_TOP_K", "10")),
             max_messages=int(os.getenv("SQS_MAX_MESSAGES", "10")),
             wait_time_seconds=int(os.getenv("SQS_WAIT_SECONDS", "20")),
+            disambiguation_resolved_queue_url=os.getenv("SQS_DISAMBIGUATION_RESOLVED_URL", ""),
+            entity_enrolled_topic_arn=os.getenv("SNS_ENTITY_ENROLLED_ARN", ""),
+            enrollment_failed_topic_arn=os.getenv("SNS_ENROLLMENT_FAILED_ARN", ""),
+            disambiguation_requested_topic_arn=os.getenv("SNS_FACE_DISAMBIGUATION_REQUESTED_ARN", ""),
+            media_bucket=media_bucket,
+            crops_bucket=os.getenv("CROPS_BUCKET", media_bucket),
+            pending_ttl_seconds=int(os.getenv("PENDING_TTL_SECONDS", "86400")),
+            purge_interval_seconds=int(os.getenv("PURGE_INTERVAL_SECONDS", "3600")),
         )

@@ -194,6 +194,12 @@ services:
       PGVECTOR_DSN: postgresql://respuesta:respuesta@postgres:5432/respuesta
       SQS_INPUT_QUEUE_URL: http://localstack:4566/000000000000/report-ingested
       SNS_OUTPUT_TOPIC_ARN: arn:aws:sns:sa-east-1:000000000000:candidate-generated
+      # Enrolamiento biométrico y desambiguación (ADR-0016)
+      SQS_DISAMBIGUATION_RESOLVED_URL: http://localstack:4566/000000000000/face-disambiguation-resolved
+      SNS_ENTITY_ENROLLED_ARN: arn:aws:sns:sa-east-1:000000000000:entity-enrolled
+      SNS_ENROLLMENT_FAILED_ARN: arn:aws:sns:sa-east-1:000000000000:enrollment-failed
+      SNS_FACE_DISAMBIGUATION_REQUESTED_ARN: arn:aws:sns:sa-east-1:000000000000:face-disambiguation-requested
+      MEDIA_BUCKET: respuesta-media
     deploy:
       resources:
         reservations:

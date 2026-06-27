@@ -37,10 +37,52 @@ class Signals:
 
 
 @dataclass(frozen=True)
+class BBox:
+    """Caja del rostro en píxeles de la imagen (para recortar y ubicar). ADR-0016."""
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+
+    @property
+    def width(self) -> int:
+        return self.x2 - self.x1
+
+    @property
+    def height(self) -> int:
+        return self.y2 - self.y1
+
+
+@dataclass(frozen=True)
 class FaceMap:
-    """'Mapa del rostro': embedding de una persona detectada + su calidad."""
+    """'Mapa del rostro': embedding de una persona detectada + su calidad y geometría (ADR-0013/0016)."""
     embedding: tuple[float, ...]
     quality: FaceQuality
+    bbox: Optional[BBox] = None   # geometría de detección (ADR-0016); None si el detector no la aporta
+    det_score: float = 0.0        # confianza del detector SCRFD (ADR-0016)
+
+
+@dataclass(frozen=True)
+class PendingFace:
+    """Un rostro candidato dentro de una desambiguación (ADR-0016). Solo el elegido se enrola."""
+    index: int
+    embedding: tuple[float, ...]
+    bbox: Optional[BBox]
+    det_score: float
+    crop_ref: Optional[str] = None   # recorte efímero en la bóveda
+
+
+@dataclass(frozen=True)
+class PendingEnrollment:
+    """Desambiguación multi-rostro en curso (ADR-0016). Persistida con TTL; clave de idempotencia."""
+    disambiguation_id: str
+    entity_id: str
+    report_id: Optional[str]
+    faces: tuple[PendingFace, ...]
+    conversation_key: Optional[str]   # para que el chatbot responda al reportante (ADR-0015)
+    created_at: str
+    expires_at: str
+    status: str = "pending"           # pending | resolved | expired
 
 
 @dataclass(frozen=True)

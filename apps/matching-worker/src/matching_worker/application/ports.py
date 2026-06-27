@@ -5,9 +5,9 @@ infraestructura; dependen solo de estas abstracciones.
 """
 from __future__ import annotations
 
-from typing import Protocol, Sequence
+from typing import Optional, Protocol, Sequence
 
-from ..domain.models import FaceMap
+from ..domain.models import BBox, FaceMap, PendingEnrollment
 
 
 class FaceMapper(Protocol):
@@ -19,6 +19,10 @@ class FaceMapper(Protocol):
 
     def map_video(self, video_bytes: bytes) -> list[FaceMap]:
         """Probes agregados por persona (tracking + Hierarchical Windowing)."""
+        ...
+
+    def crop_faces(self, image_bytes: bytes, bboxes: list[BBox]) -> list[bytes]:
+        """Recorta cada rostro de la imagen para la desambiguación (ADR-0016)."""
         ...
 
 
@@ -43,3 +47,25 @@ class EventBus(Protocol):
     """Publicación de eventos sobre AWS SQS/SNS (ADR-0012); envuelve en el sobre estándar (ADR-0011)."""
 
     def publish(self, event: str, payload: dict) -> None: ...
+
+
+class MediaGateway(Protocol):
+    """Acceso a adjuntos cifrados de la bóveda (ADR-0005/0008). Recortes con TTL para minimizar (A04)."""
+
+    def fetch(self, media_ref: str) -> bytes: ...
+    def store_crops(self, crops: list[bytes], ttl_seconds: int) -> list[str]:
+        """Guarda los recortes efímeros y devuelve sus `crop_ref`."""
+        ...
+
+    def delete_crops(self, crop_refs: list[str]) -> None: ...
+
+
+class PendingEnrollmentStore(Protocol):
+    """Persistencia de desambiguaciones en curso (Postgres, con TTL). ADR-0016."""
+
+    def save(self, pending: PendingEnrollment) -> None: ...
+    def get(self, disambiguation_id: str) -> Optional[PendingEnrollment]: ...
+    def mark_resolved(self, disambiguation_id: str) -> None: ...
+    def purge_expired(self, now_iso: str) -> int:
+        """Borra los pendientes vencidos; devuelve cuántos purgó."""
+        ...

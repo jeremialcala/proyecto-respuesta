@@ -61,10 +61,17 @@ FANOUT_QUEUES=(
   state-changed          # notificación
   state-changed-audit    # auditoría (segundo consumidor de state-changed)
   notification-sent      # auditoría
+  # Enrolamiento biométrico y desambiguación (ADR-0016)
+  face-disambiguation-requested  # chatbot-gateway (muestra miniaturas al reportante)
+  face-disambiguation-resolved   # matching-worker (enrola el rostro elegido)
+  enrollment-failed              # chatbot-gateway (pide otra foto)
+  entity-enrolled                # re-matching / auditoría (consumidor futuro)
 )
 
-# 3) Topics SNS (catálogo canónico del ADR-0011).
-TOPICS=(media-stored report-ingested candidate-generated match-confirmed match-resolved state-changed notification-sent)
+# 3) Topics SNS (catálogo canónico del ADR-0011/0016).
+TOPICS=(media-stored report-ingested candidate-generated match-confirmed match-resolved
+        state-changed notification-sent
+        entity-enrolled enrollment-failed face-disambiguation-requested face-disambiguation-resolved)
 
 # 4) Pares "topic queue" de suscripción SNS -> SQS.
 SUBSCRIPTIONS=(
@@ -76,6 +83,10 @@ SUBSCRIPTIONS=(
   "state-changed state-changed"
   "state-changed state-changed-audit"
   "notification-sent notification-sent"
+  "face-disambiguation-requested face-disambiguation-requested"
+  "face-disambiguation-resolved face-disambiguation-resolved"
+  "enrollment-failed enrollment-failed"
+  "entity-enrolled entity-enrolled"
 )
 
 for q in "${DIRECT_QUEUES[@]}" "${FANOUT_QUEUES[@]}"; do
