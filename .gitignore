@@ -134,4 +134,27 @@ celerybeat.pid
 # OS
 .DS_Store
 Thumbs.db
-synthetic/
+
+# PoC vast.ai (ADR-0019): ignora lo generado/pesado/secreto; el kit (scripts, .py, READMEs,
+# *.example, plantillas) SÍ se versiona.
+deploy/poc-vastai/.venv/
+deploy/poc-vastai/synthetic/
+deploy/poc-vastai/faces/
+deploy/poc-vastai/results-*.json
+# Secretos/creds del nodo (las plantillas *.example sí se versionan):
+deploy/poc-vastai/vast/env.vast
+deploy/poc-vastai/vast/env.vast.local
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.lock.hcl
+faces-ffhq/
