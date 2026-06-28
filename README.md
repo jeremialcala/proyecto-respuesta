@@ -73,12 +73,12 @@ docs/
 │   ├── glossary.md             Lenguaje ubicuo (DDD) y contextos acotados
 │   ├── data-classification.md  Inventario de datos sensibles y retención (GDPR)
 │   └── adr/                       0001 LLM on-prem · 0002 NeMo Guardrails · 0003 Modelo A
-│                                   0004 matching (drift) · 0005 ingestión Meta · 0006 residencia São Paulo
-│                                   0007 esquema/retención/auditoría · 0008 bóveda Vault/identidad
-│                                   0009 auth Auth0 · 0010 back office · 0011 contrato de eventos
-│                                   0012 broker AWS SQS/SNS · 0013 ArcFace 512-d + scoring solo-rostro
-│                                   0014 contenedores OCI + despliegue EKS/AWS · 0015 memoria conversación pgvector
-│                                   0016 enrolamiento biométrico + desambiguación · 0017 media delivery gateway
+│                                  0004 matching (drift) · 0005 ingestión Meta · 0006 residencia São Paulo
+│                                  0007 esquema/retención/auditoría · 0008 bóveda Vault/identidad
+│                                  0009 auth Auth0 · 0010 back office · 0011 contrato de eventos
+│                                  0012 broker AWS SQS/SNS · 0013 ArcFace 512-d + scoring solo-rostro
+│                                  0014 contenedores OCI + despliegue EKS/AWS · 0015 memoria conversación pgvector
+│                                  0016 enrolamiento biométrico + desambiguación · 0017 media delivery gateway
 ├── 01-requirements/
 │   └── flujo-central.md        PRD: reporte→match→confirmación→notificación (Gate 0)
 ├── 02-design/
