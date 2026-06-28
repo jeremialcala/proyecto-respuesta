@@ -24,15 +24,17 @@ def _parse_s3_ref(ref: str) -> tuple[str, str]:
 
 
 class VaultMediaGateway:
-    def __init__(self, region: str, crops_bucket: str, crops_prefix: str = "crops") -> None:
+    def __init__(self, region: str, crops_bucket: str, crops_prefix: str = "crops",
+                 sse: str = "aws:kms") -> None:
         self._region = region
         self._crops_bucket = crops_bucket
         self._crops_prefix = crops_prefix.strip("/")
+        self._sse = sse   # "aws:kms" en prod; "" en dev con MinIO (sin KES no acepta SSE-KMS)
         self._s3 = None
 
     def _ensure(self):
         if self._s3 is None:
-            import boto3  # import perezoso
+            import boto3   # endpoint S3 vía AWS_ENDPOINT_URL_S3 (MinIO en dev) — boto3 lo toma del entorno
             self._s3 = boto3.client("s3", region_name=self._region)
         return self._s3
 
@@ -45,10 +47,11 @@ class VaultMediaGateway:
     def store_crops(self, crops: list[bytes], ttl_seconds: int) -> list[str]:
         s3 = self._ensure()
         refs: list[str] = []
+        extra = {"ServerSideEncryption": self._sse} if self._sse else {}
         for blob in crops:
             key = f"{self._crops_prefix}/{uuid.uuid4().hex}.jpg"
             s3.put_object(Bucket=self._crops_bucket, Key=key, Body=blob,
-                          ContentType="image/jpeg", ServerSideEncryption="aws:kms")
+                          ContentType="image/jpeg", **extra)
             refs.append(f"s3://{self._crops_bucket}/{key}")
         return refs
 

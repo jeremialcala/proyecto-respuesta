@@ -29,6 +29,9 @@ services:
       retries: 10
 
   localstack:
+    # Community: solo SQS/SNS/KMS (efímeros, ok para mensajería transitoria). La PERSISTENCIA de
+    # LocalStack es función de pago (el tier Hobby no la incluye — verificado), así que la persistencia
+    # de los medios la da MinIO (S3 real con volumen). El init es idempotente.
     image: localstack/localstack:3
     environment:
       SERVICES: sqs,sns,s3,kms
@@ -45,6 +48,30 @@ services:
       timeout: 5s
       retries: 30
       start_period: 20s
+
+  # Bóveda S3 persistente (ADR-0008): MinIO guarda los medios cifrados en un volumen, así sobreviven a
+  # reinicios (a diferencia del S3 efímero de LocalStack). En prod son S3+KMS reales.
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports: ["9000:9000", "9001:9001"]   # 9000 API S3, 9001 consola web
+    volumes: ["minio-data:/data"]
+
+  # Crea los buckets de la bóveda en MinIO al arrancar (one-shot, imagen mc con shell). Reintenta hasta
+  # que MinIO responde; idempotente (--ignore-existing). Los consumidores esperan a que termine.
+  createbuckets:
+    image: minio/mc:latest
+    depends_on: [minio]
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin; do echo 'esperando minio...'; sleep 1; done;
+      mc mb --ignore-existing local/respuesta-media;
+      mc mb --ignore-existing local/respuesta-quarantine;
+      echo 'buckets MinIO listos';
+      "
 
   webhook-gateway:
     build: ./apps/webhook-gateway
@@ -80,20 +107,24 @@ services:
 
   vault-worker:
     build: ./apps/vault-worker
-    # Consume inbound.media: descarga el binario de Graph, escanea, cifra (KMS) y guarda en S3.
-    # LocalStack provee S3+KMS; necesita META_GRAPH_TOKEN real para bajar el adjunto de Meta.
+    # Consume inbound.media: descarga el binario de Graph, escanea, cifra y guarda en S3 (MinIO).
+    # SQS/SNS en LocalStack; S3 en MinIO (persistente). Necesita META_GRAPH_TOKEN real para bajar de Meta.
     depends_on:
       localstack: {condition: service_healthy}
+      createbuckets: {condition: service_completed_successfully}
     environment:
       AWS_REGION: sa-east-1
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
-      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_ACCESS_KEY_ID: minioadmin       # creds de MinIO (LocalStack ignora el valor para SQS/SNS)
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_ENDPOINT_URL: http://localstack:4566       # SQS/SNS/KMS
+      AWS_ENDPOINT_URL_S3: http://minio:9000          # S3 → MinIO persistente (boto3 lo prioriza para S3)
       SQS_INPUT_QUEUE_URL: http://localstack:4566/000000000000/inbound-media
       SQS_STORED_QUEUE_URL: arn:aws:sns:sa-east-1:000000000000:media-stored
       MEDIA_BUCKET: respuesta-media
       QUARANTINE_BUCKET: respuesta-quarantine
       KMS_KEY_ID: alias/respuesta-vault
+      VAULT_CIPHER: ${VAULT_CIPHER:-passthrough}   # dev: JPEG plano (el matcher aún no descifra). Prod: kms
+      S3_SSE: ${S3_SSE:-}                            # dev/MinIO sin SSE-KMS. Prod: aws:kms
       META_GRAPH_TOKEN: ${META_GRAPH_TOKEN:-graph-token-dev}
 
   # Ollama empaquetado: opt-in con `--profile llm`. Por defecto el chatbot usa el Ollama del HOST
@@ -103,6 +134,15 @@ services:
     profiles: ["llm"]
     ports: ["11434:11434"]
     volumes: ["ollama:/root/.ollama"]
+    # Ollama necesita la GPU: gemma3:27b (~17 GB) no cabe en CPU/RAM. Misma reserva que el
+    # matching-worker (requiere NVIDIA Container Toolkit). Sin esto, Ollama arranca en CPU (VRAM 0 B).
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: ["gpu"]
 
   chatbot-gateway:
     build: ./apps/chatbot-gateway
@@ -126,7 +166,7 @@ services:
       # Desambiguación multi-rostro (ADR-0016): consume requested, publica resolved
       SQS_FACE_DISAMBIGUATION_REQUESTED_URL: http://localstack:4566/000000000000/face-disambiguation-requested
       SQS_DISAMBIGUATION_RESOLVED_URL: http://localstack:4566/000000000000/face-disambiguation-resolved
-      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}   # Ollama del host (parametrizable)
+      OLLAMA_URL: ${OLLAMA_URL:-http://llm:11434}   # servicio llm del compose (perfil llm). Host: http://host.docker.internal:11434
       LLM_MODEL: ${LLM_MODEL:-gemma3:27b}
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-120}      # s; sube si el modelo es grande / hay cola
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
@@ -196,11 +236,13 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       localstack: {condition: service_healthy}
+      createbuckets: {condition: service_completed_successfully}
     environment:
       AWS_REGION: sa-east-1
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
-      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_ACCESS_KEY_ID: minioadmin       # creds de MinIO (LocalStack ignora el valor para SQS/SNS)
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_ENDPOINT_URL: http://localstack:4566       # SQS/SNS
+      AWS_ENDPOINT_URL_S3: http://minio:9000          # S3 (lee la foto, guarda recortes) → MinIO
       PGVECTOR_DSN: postgresql://respuesta:respuesta@postgres:5432/respuesta
       SQS_INPUT_QUEUE_URL: http://localstack:4566/000000000000/report-ingested
       SNS_OUTPUT_TOPIC_ARN: arn:aws:sns:sa-east-1:000000000000:candidate-generated
@@ -210,6 +252,9 @@ services:
       SNS_ENROLLMENT_FAILED_ARN: arn:aws:sns:sa-east-1:000000000000:enrollment-failed
       SNS_FACE_DISAMBIGUATION_REQUESTED_ARN: arn:aws:sns:sa-east-1:000000000000:face-disambiguation-requested
       MEDIA_BUCKET: respuesta-media
+      S3_SSE: ${S3_SSE:-}                             # dev/MinIO sin SSE-KMS. Prod: aws:kms
+    volumes:
+      - "insightface-models:/models"   # cache del modelo buffalo_l (no re-descargar ~300 MB)
     deploy:
       resources:
         reservations:
@@ -220,4 +265,10 @@ services:
 
 volumes:
   pgdata:
+  minio-data:   # bóveda S3 persistente (medios cifrados) — sobrevive a reinicios
+  insightface-models:   # cache del modelo ArcFace/buffalo_l del matching-worker
+  # Reusa el volumen Ollama del host (ya tiene gemma3:27b + nomic-embed-text) en vez de uno vacío
+  # namespaceado (respuesta_ollama), para no re-descargar ~17 GB en el perfil llm.
   ollama:
+    external: true
+    name: ollama

@@ -60,6 +60,17 @@ class MediaGateway(Protocol):
     def delete_crops(self, crop_refs: list[str]) -> None: ...
 
 
+class GrantRevoker(Protocol):
+    """Revoca las concesiones del media-gateway emitidas para mostrar los recortes al reportante.
+
+    Las URLs firmadas que sirvieron las miniaturas (ADR-0017) se revocan al purgar los recortes, para
+    que dejen de servir antes incluso de su TTL (minimización, ADR-0016 §6). Best-effort: si falla, el
+    TTL corto de la concesión es el respaldo.
+    """
+
+    def revoke_grants(self, *, report_id: Optional[str], media_refs: list[str]) -> None: ...
+
+
 class PendingEnrollmentStore(Protocol):
     """Persistencia de desambiguaciones en curso (Postgres, con TTL). ADR-0016."""
 

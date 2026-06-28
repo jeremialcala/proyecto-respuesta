@@ -88,6 +88,14 @@ class FakePending:
         return len(gone)
 
 
+class FakeRevoker:
+    def __init__(self):
+        self.calls = []   # [(report_id, [media_refs])]
+
+    def revoke_grants(self, *, report_id, media_refs):
+        self.calls.append((report_id, list(media_refs)))
+
+
 class FakeBus:
     def __init__(self):
         self.events = []
@@ -112,13 +120,15 @@ def _face(emb=(0.1, 0.2), size=120, blur=80.0, x1=0, det=0.9):
                    bbox=BBox(x1, 0, x1 + 90, 100), det_score=det)
 
 
-def _svc(faces, *, pending=None, fixed_id="dis_fixed", now=None):
+def _svc(faces, *, pending=None, fixed_id="dis_fixed", now=None, revoker=None):
     fm, media, store, index, pend, bus = (
         FakeMapper(faces), FakeMedia(), FakeStore(), FakeIndex(), pending or FakePending(), FakeBus())
     now_fn = (lambda: now) if now else (lambda: datetime.now(timezone.utc))
     svc = EnrollmentService(fm, media, store, index, pend, bus, QualityThresholds(),
+                            grant_revoker=revoker,
                             pending_ttl_seconds=3600, now_fn=now_fn, id_fn=lambda: fixed_id)
-    return svc, dict(fm=fm, media=media, store=store, index=index, pending=pend, bus=bus)
+    return svc, dict(fm=fm, media=media, store=store, index=index, pending=pend, bus=bus,
+                     revoker=revoker)
 
 
 def _ingested(entity="ent_1", report="rep_1", media_ref="vault://m/1", ck="conv_1"):
@@ -237,3 +247,41 @@ def test_missing_entity_or_media_is_ignored():
     svc, d = _svc([_face()])
     svc.on_report_ingested({"payload": {"report_id": "r"}})   # sin entity_id/media_ref
     assert d["bus"].events == []
+
+
+# --- revocación de concesiones del media-gateway al purgar (ADR-0016 §6 / ADR-0017) ---
+def test_resolved_revokes_grants_by_report_id():
+    rev = FakeRevoker()
+    svc, d = _svc([_face(emb=(1.0, 0.0), x1=0), _face(emb=(0.0, 1.0), x1=300)], revoker=rev)
+    svc.on_report_ingested(_ingested())          # report_id="rep_1"
+    svc.on_disambiguation_resolved(_resolve(selected_index=1))
+    # un lote por report_id, con los crop_refs purgados
+    assert rev.calls == [("rep_1", ["vault://crop/0", "vault://crop/1"])]
+
+
+def test_none_of_these_revokes_grants():
+    rev = FakeRevoker()
+    svc, d = _svc([_face(x1=0), _face(x1=300)], revoker=rev)
+    svc.on_report_ingested(_ingested())
+    svc.on_disambiguation_resolved(_resolve(action="none_of_these"))
+    assert rev.calls == [("rep_1", ["vault://crop/0", "vault://crop/1"])]
+
+
+def test_expired_on_resolve_revokes_grants():
+    past = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    pend = FakePending()
+    rev = FakeRevoker()
+    svc_old, d_old = _svc([_face(x1=0), _face(x1=300)], pending=pend, now=past, revoker=rev)
+    svc_old.on_report_ingested(_ingested())
+    svc_new, _ = _svc([], pending=pend, revoker=rev)
+    svc_new._media = d_old["media"]; svc_new._bus = d_old["bus"]
+    svc_new.on_disambiguation_resolved(_resolve(selected_index=0))
+    assert rev.calls[-1] == ("rep_1", ["vault://crop/0", "vault://crop/1"])
+
+
+def test_no_revoker_configured_still_purges_crops():
+    # Sin revoker (media_gateway_url no configurada): la purga de recortes sigue ocurriendo.
+    svc, d = _svc([_face(emb=(1.0, 0.0), x1=0), _face(emb=(0.0, 1.0), x1=300)])
+    svc.on_report_ingested(_ingested())
+    svc.on_disambiguation_resolved(_resolve(selected_index=1))
+    assert set(d["media"].deleted) == {"vault://crop/0", "vault://crop/1"}

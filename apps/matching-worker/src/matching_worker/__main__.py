@@ -19,6 +19,7 @@ from .application.enrollment_service import EnrollmentService
 from .config import WorkerConfig
 from .adapters.arcface_facemapper import ArcFaceMapper
 from .adapters.faiss_index import FaissAnnIndex
+from .adapters.http_grant_revoker import HttpGrantRevoker
 from .adapters.pg_pending_enrollment_store import PgPendingEnrollmentStore
 from .adapters.pgvector_store import PgvectorEmbeddingStore
 from .adapters.sqs_consumer import SqsConsumer
@@ -43,11 +44,13 @@ def build_enrollment_service(cfg: WorkerConfig):
         "face.disambiguation.requested": cfg.disambiguation_requested_topic_arn,
     }, cfg.aws_region, producer=cfg.producer)
     face_mapper = ArcFaceMapper(cfg.arcface_model_root)
-    media = VaultMediaGateway(cfg.aws_region, cfg.crops_bucket)
+    media = VaultMediaGateway(cfg.aws_region, cfg.crops_bucket, sse=cfg.s3_sse)
+    # Revoca las concesiones del media-gateway al purgar (ADR-0016 §6); sin URL configurada, se omite.
+    revoker = HttpGrantRevoker(cfg.media_gateway_url) if cfg.media_gateway_url else None
     service = EnrollmentService(
         face_mapper=face_mapper, media=media, store=store, index=index,
-        pending=pending, bus=bus, pending_ttl_seconds=cfg.pending_ttl_seconds,
-        crop_ttl_seconds=cfg.pending_ttl_seconds,
+        pending=pending, bus=bus, grant_revoker=revoker,
+        pending_ttl_seconds=cfg.pending_ttl_seconds, crop_ttl_seconds=cfg.pending_ttl_seconds,
     )
     return service, pending
 

@@ -19,7 +19,8 @@ from typing import Callable, Optional
 
 from ..config import QualityThresholds
 from ..domain.models import FaceMap, PendingEnrollment, PendingFace
-from .ports import AnnIndex, EmbeddingStore, EventBus, FaceMapper, MediaGateway, PendingEnrollmentStore
+from .ports import (AnnIndex, EmbeddingStore, EventBus, FaceMapper, GrantRevoker, MediaGateway,
+                    PendingEnrollmentStore)
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ class EnrollmentService:
         bus: EventBus,
         quality: QualityThresholds | None = None,
         *,
+        grant_revoker: GrantRevoker | None = None,
         pending_ttl_seconds: int = 86400,
         crop_ttl_seconds: int = 86400,
         now_fn: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
@@ -63,6 +65,7 @@ class EnrollmentService:
         self._pending = pending
         self._bus = bus
         self._q = quality or QualityThresholds()
+        self._revoker = grant_revoker   # revoca las concesiones del media-gateway al purgar (ADR-0016 §6)
         self._pending_ttl = pending_ttl_seconds
         self._crop_ttl = crop_ttl_seconds
         self._now = now_fn
@@ -99,6 +102,16 @@ class EnrollmentService:
         payload.update(_reporter_fields(reporter))
         self._bus.publish("enrollment.failed", payload)
         log.info("✗ enrolamiento fallido entity_id=%s reason=%s", entity_id, reason)
+
+    def _purge(self, pending: PendingEnrollment, crop_refs: list[str]) -> None:
+        """Purga los recortes de la bóveda y revoca las concesiones que sirvieron esas miniaturas.
+
+        La purga del recorte (PII real) es la garantía; la revocación de la concesión del media-gateway
+        (ADR-0017) es best-effort —su TTL corto es el respaldo— para no bloquear el enrolamiento.
+        """
+        self._media.delete_crops(crop_refs)
+        if self._revoker is not None:
+            self._revoker.revoke_grants(report_id=pending.report_id, media_refs=crop_refs)
 
     # --- report.ingested ---
     def on_report_ingested(self, envelope: dict) -> None:
@@ -177,14 +190,14 @@ class EnrollmentService:
 
         # Expirado: purga recortes y responde expired.
         if self._iso_now() > pending.expires_at:
-            self._media.delete_crops(all_crops)
+            self._purge(pending, all_crops)
             self._pending.mark_resolved(disambiguation_id)
             self._fail(pending.entity_id, pending.report_id, "expired", reporter)
             return
 
         # El sujeto no está en la foto → purga todo y pide otra.
         if p.get("action") == "none_of_these":
-            self._media.delete_crops(all_crops)
+            self._purge(pending, all_crops)
             self._pending.mark_resolved(disambiguation_id)
             self._fail(pending.entity_id, pending.report_id, "no_subject_in_photo", reporter)
             return
@@ -202,7 +215,7 @@ class EnrollmentService:
                     bbox=chosen.bbox, det_score=chosen.det_score),
             pending.report_id, "face.disambiguation.resolved", reporter,
         )
-        self._media.delete_crops(all_crops)            # minimización: purga TODOS los recortes
+        self._purge(pending, all_crops)                # minimización: purga recortes + revoca concesiones
         self._pending.mark_resolved(disambiguation_id)
 
     def _iso_now(self) -> str:

@@ -89,8 +89,10 @@ class WorkerConfig:
     disambiguation_requested_topic_arn: str = ""   # SNS: face.disambiguation.requested
     media_bucket: str = "respuesta-media"          # bóveda S3 (ADR-0005/0008)
     crops_bucket: str = ""                          # recortes efímeros; por defecto = media_bucket
+    s3_sse: str = "aws:kms"                          # "" en dev con MinIO (sin KES no acepta SSE-KMS)
     pending_ttl_seconds: int = 86400               # TTL del PendingEnrollment (alinear ADR-0007/0015)
     purge_interval_seconds: int = 3600             # cada cuánto corre purge_expired
+    media_gateway_url: str = ""                    # plano interno del media-gateway (revoke-by-ref, ADR-0017)
 
     @staticmethod
     def from_env() -> "WorkerConfig":
@@ -110,6 +112,8 @@ class WorkerConfig:
             disambiguation_requested_topic_arn=os.getenv("SNS_FACE_DISAMBIGUATION_REQUESTED_ARN", ""),
             media_bucket=media_bucket,
             crops_bucket=os.getenv("CROPS_BUCKET", media_bucket),
+            s3_sse=os.getenv("S3_SSE", "aws:kms"),
             pending_ttl_seconds=int(os.getenv("PENDING_TTL_SECONDS", "86400")),
             purge_interval_seconds=int(os.getenv("PURGE_INTERVAL_SECONDS", "3600")),
+            media_gateway_url=os.getenv("MEDIA_GATEWAY_URL", ""),
         )

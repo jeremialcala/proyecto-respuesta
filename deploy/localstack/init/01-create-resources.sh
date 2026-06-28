@@ -34,12 +34,21 @@ create_queue_with_dlq() {
 }
 
 # Suscribe una cola SQS existente a un topic SNS con entrega cruda (sin sobre SNS).
+# Idempotente: con persistencia el init re-corre en cada arranque; sin esta guarda se acumularían
+# suscripciones duplicadas → entrega múltiple del mismo evento.
 subscribe_queue_to_topic() {
-  local topic="$1" queue="$2"
+  local topic="$1" queue="$2" t_arn q_arn
+  t_arn="$(topic_arn "${topic}")"
+  q_arn="$(queue_arn "${queue}")"
+  if awslocal sns list-subscriptions-by-topic --topic-arn "${t_arn}" \
+       --query "Subscriptions[?Endpoint=='${q_arn}'].SubscriptionArn" --output text 2>/dev/null | grep -q ":"; then
+    echo "  sub ${topic} -> ${queue} (ya existe)"
+    return
+  fi
   awslocal sns subscribe \
-    --topic-arn "$(topic_arn "${topic}")" \
+    --topic-arn "${t_arn}" \
     --protocol sqs \
-    --notification-endpoint "$(queue_arn "${queue}")" \
+    --notification-endpoint "${q_arn}" \
     --attributes RawMessageDelivery=true \
     --return-subscription-arn >/dev/null
   echo "  sub ${topic} -> ${queue} (raw)"
@@ -104,14 +113,24 @@ for pair in "${SUBSCRIPTIONS[@]}"; do
   subscribe_queue_to_topic $pair
 done
 
-# Buckets S3 de la bóveda (vault-worker).
+# Buckets S3 de la bóveda (vault-worker). Idempotente: con persistencia ya existen tras el restore.
 for b in respuesta-media respuesta-quarantine; do
-  awslocal s3 mb "s3://${b}" >/dev/null && echo "  bucket ${b}"
+  if awslocal s3 ls "s3://${b}" >/dev/null 2>&1; then
+    echo "  bucket ${b} (ya existe)"
+  else
+    awslocal s3 mb "s3://${b}" >/dev/null && echo "  bucket ${b}"
+  fi
 done
 
 # KMS key + alias para el cifrado de la bóveda (KMS_KEY_ID=alias/respuesta-vault).
-key_id=$(awslocal kms create-key --query 'KeyMetadata.KeyId' --output text)
-awslocal kms create-alias --alias-name alias/respuesta-vault --target-key-id "${key_id}" >/dev/null
-echo "  kms alias/respuesta-vault (${key_id})"
+# Idempotente y CRÍTICO: re-crear la key cambiaría el key id → la DEK envuelta de las fotos ya
+# guardadas no se podría desenvolver. Solo se crea si el alias aún no existe.
+if awslocal kms describe-key --key-id alias/respuesta-vault >/dev/null 2>&1; then
+  echo "  kms alias/respuesta-vault (ya existe)"
+else
+  key_id=$(awslocal kms create-key --query 'KeyMetadata.KeyId' --output text)
+  awslocal kms create-alias --alias-name alias/respuesta-vault --target-key-id "${key_id}" >/dev/null
+  echo "  kms alias/respuesta-vault (${key_id})"
+fi
 
 echo "[init] listo."
