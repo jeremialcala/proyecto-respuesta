@@ -11,8 +11,9 @@ Contenedores y orquestación implementados en `deploy/` y por app:
 
 - **Imágenes OCI** no-root por servicio: `apps/webhook-gateway/Dockerfile` (python-slim) y
   `apps/matching-worker/Dockerfile` (base CUDA para ArcFace/GPU).
-- **Dev local**: `docker-compose.yml` (Postgres+pgvector, Redis, LocalStack SQS/SNS, servicios) +
-  init de colas/topics con DLQ por redrive.
+- **Dev local**: `docker-compose.yml` (Postgres+pgvector, Redis, LocalStack SQS/SNS/KMS, **MinIO**
+  como bóveda S3 persistente, Ollama y servicios; perfiles `chat`/`gpu`/`llm`) + init de colas/topics
+  con DLQ por redrive (idempotente).
 - **EKS/AWS**: `deploy/k8s/` (kustomize) con IRSA por workload, Ingress ALB + HPA (gateway), KEDA por
   profundidad de cola + nodos GPU (matching), Pod Security restricted y secretos vía External Secrets.
 

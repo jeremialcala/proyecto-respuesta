@@ -17,9 +17,16 @@
    **Limpio** → cifra de sobre (DEK por sujeto) → S3 bóveda → publica `media.stored` (scan=clean).
 5. Borra el mensaje de SQS sólo si terminó OK; si falla, redrive a DLQ (ADR-0012).
 
+> **Cifrado y almacén (prod vs dev):** en **producción** se usa el envelope KMS (DEK por sujeto,
+> ADR-0008) sobre **S3** con `SSE=aws:kms`. En **dev local** se selecciona por config
+> (`VAULT_CIPHER=passthrough`, `S3_SSE=""`): el binario se guarda **plano en MinIO** (S3 persistente),
+> porque el `matching-worker` aún lee los bytes sin descifrar y MinIO no tiene KMS. El endpoint S3 lo
+> da `AWS_ENDPOINT_URL_S3` (MinIO en dev), separado del de SQS/SNS/KMS.
+
 ## Pendiente (fase 03/04)
 
 - ClamAV + lista de hashes CSAM reales (reemplazar `PassthroughScanner`).
-- Vault Transit para la **clave por usuario** y rotación (ADR-0008).
+- Vault Transit para la **clave por usuario** y rotación (ADR-0008); descifrado en el `matching-worker`
+  para retirar el cipher passthrough de dev.
 - Cola/incidente CSAM y store Event/EventAction (ADR-0005).
 - Soporte de audio/video (MVP: imagen).

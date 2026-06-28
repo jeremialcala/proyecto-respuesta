@@ -70,7 +70,9 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
   reportante y devuelve `face.disambiguation.resolved` (ADR-0016). **33 tests en verde**.
 - **`apps/matching-worker` con enrolamiento** (ADR-0016): `EnrollmentService`,
   `PgPendingEnrollmentStore` y recorte de rostros en el adaptador de visión; `FaceMap` extendido con
-  `bbox`/`det_score`. **42 tests en verde**.
+  `bbox`/`det_score`. Al resolver/expirar la desambiguación, **revoca las concesiones del media-gateway**
+  (puerto `GrantRevoker` + `HttpGrantRevoker`, `POST /grants:revoke-by-ref`) junto con la purga de los
+  recortes (minimización, ADR-0016 §6 / ADR-0017). **47 tests en verde**.
 - **`apps/output-service` entrega medios por URL firmada** (ADR-0016/0017): dominio `face_options`
   (opciones interactivas de selección de rostro), cliente HTTP de concesiones
   (`http_media_grant_client`) contra el media-gateway y envío por Graph API eligiendo texto/plantilla;
@@ -78,6 +80,16 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
 - **`apps/meta-handler` normaliza respuestas interactivas** (ADR-0016): el normalizador reparte las
   selecciones del reportante (botones/listas de la desambiguación) hacia el flujo de conversación.
   **13 tests en verde**.
+- **Dev local: bóveda S3 persistente con MinIO + endurecimiento del compose** (`docker-compose.yml`,
+  `deploy/localstack/init`): los medios cifrados se guardan en **MinIO** (volumen, sobrevive a
+  reinicios) en vez del S3 efímero de LocalStack — el S3 de `vault-worker`/`matching-worker` apunta a
+  MinIO vía `AWS_ENDPOINT_URL_S3`, separado de SQS/SNS/KMS (LocalStack). En dev el `vault-worker` usa
+  **cipher passthrough** (`VAULT_CIPHER`, sin SSE-KMS) porque el matcher aún lee sin descifrar; prod
+  sigue con KMS (ADR-0008). LocalStack vuelve a **Community** (la persistencia es Pro) con **init
+  idempotente** (no duplica suscripciones SNS→SQS ni regenera la KMS key). Perfiles `chat`/`gpu`/`llm`;
+  `OLLAMA_URL=http://llm:11434`; reserva de GPU para el servicio `llm`; `matching-worker` con dir de
+  modelos `/models` escribible + volumen de caché de `buffalo_l`. Fixes del `Dockerfile` del matcher
+  (pip/setuptools modernos para resolver deps; `build-essential`).
 - **Residencia de datos: UE → São Paulo (`sa-east-1`)** propagada en cascada a charter,
   `data-classification.md`, `threat-model.md` (T4/T7), `architecture.md`, `openapi.yaml`,
   `asyncapi.yaml` y C4 de contenedores. GDPR pasa a ser listón interno (residencia bajo LGPD); el

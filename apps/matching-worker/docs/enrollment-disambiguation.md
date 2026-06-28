@@ -144,7 +144,16 @@ class PendingEnrollmentStore(Protocol):
     def get(self, disambiguation_id: str) -> PendingEnrollment | None: ...
     def mark_resolved(self, disambiguation_id: str) -> None: ...
     def purge_expired(self, now_iso: str) -> int: ...
+
+class GrantRevoker(Protocol):
+    """Revoca las concesiones del media-gateway (ADR-0017) al purgar los recortes. Best-effort: si
+    falla, el TTL corto de la concesión es el respaldo (§6)."""
+    def revoke_grants(self, *, report_id: str | None, media_refs: list[str]) -> None: ...
 ```
+
+Al resolver/expirar/`none_of_these`, el `EnrollmentService` purga los recortes **y** revoca por lote
+las concesiones (`POST /grants:revoke-by-ref {report_id}`, o por `media_ref` si no hay `report_id`)
+vía `HttpGrantRevoker`. Es opcional: sin `MEDIA_GATEWAY_URL` configurada, la purga de recortes igual ocurre.
 
 `FaceMapper` gana una capacidad de recorte (en el adaptador de visión, opera sobre el array decodificado):
 
@@ -219,7 +228,13 @@ disparar re-matching de reportes de "encontrado" previos.
 `__main__.py` del worker añade un consumidor para `report.ingested` y otro para
 `face.disambiguation.resolved`, ambos hacia `EnrollmentService`. El servicio recibe por inyección:
 `FaceMapper`, `MediaGateway`, `EmbeddingStore`, `AnnIndex`, `PendingEnrollmentStore`, `EventBus`,
-`QualityThresholds`. Un job programado invoca `purge_expired` (alinear ventana con ADR-0007/0015).
+`QualityThresholds` y `GrantRevoker` (opcional, `HttpGrantRevoker` si `MEDIA_GATEWAY_URL` está
+configurada). Un job programado invoca `purge_expired` (alinear ventana con ADR-0007/0015).
+
+> **Modelo en dev (S3/MinIO):** el `MediaGateway` lee/escribe S3 vía `AWS_ENDPOINT_URL_S3` (MinIO
+> persistente en local). El binario se lee **sin descifrar** (el `vault-worker` guarda passthrough en
+> dev); en prod faltará inyectar el descifrado de sobre (ADR-0008). El modelo ArcFace (`buffalo_l`) se
+> cachea en el volumen `/models`.
 
 ## 9. Plan de implementación (fase 03, TDD)
 

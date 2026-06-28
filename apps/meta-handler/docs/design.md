@@ -10,7 +10,10 @@
 
 1. Consume el sobre `meta.received` (publicado por el webhook-gateway) desde SQS.
 2. **Normaliza** (`domain/normalize.py`): `object` → canal; extrae `contact_ref` (`from`),
-   `message_id` y el tipo (text/image/location/unsupported) con su contenido.
+   `message_id` y el tipo (text/image/location/unsupported) con su contenido. Las **respuestas
+   interactivas** de WhatsApp (`type:"interactive"` → `button_reply`/`list_reply`, p. ej. al desambiguar
+   rostros, ADR-0016) se **aplanan a TEXT** con el título de la opción tocada, para que el chatbot las
+   resuelva como un texto normal (`parse_selection`).
 3. **Reparte** (`application/handler_service.py`):
    - text/location → `inbound.text` (cuerpo JWE; el `contact_ref` va en claro como referencia).
    - image → `inbound.media` (solo `media_id` + `mime`; el binario lo baja la Bóveda).

@@ -7,16 +7,17 @@ común (ADR-0011/0012).
 
 | Servicio | Rol | Eventos | Tests |
 | :---- | :---- | :---- | :---: |
-| `webhook-gateway` | Borde de ingestión Meta (FastAPI): firma + idempotencia | → `meta.received` | 15 |
-| `meta-handler` | Normaliza y reparte el crudo | `meta.received` → `inbound.text`/`inbound.media` | 11 |
-| `vault-worker` | Descarga + escaneo AV/CSAM + cifrado de sobre por usuario | `inbound.media` → `media.stored` | 8 |
-| `chatbot-gateway` | Canal principal: rieles + LLM on-prem **no autoritativo** | `inbound.text` → `outbound.reply`/`report.received` | 12 |
-| `output-service` | Salida a Graph API (texto / plantilla HSM por ventana 24h) | `outbound.reply` → Meta | 5 |
-| `core-backend` | API + orquestador: reportes, estados, **auditoría SHA-256** | `report.received` → `report.ingested`/`state.changed` | 16 |
-| `matching-worker` | Motor de matching facial **ArcFace 512-d** (GPU) | `report.ingested`/`media.stored` → `candidate.generated` | 32 |
+| `webhook-gateway` | Borde de ingestión Meta (FastAPI): firma + idempotencia | → `meta.received` | 14 |
+| `meta-handler` | Normaliza y reparte el crudo (texto, imagen y **respuestas interactivas** de botón/lista) | `meta.received` → `inbound.text`/`inbound.media` | 13 |
+| `vault-worker` | Descarga + escaneo AV/CSAM + cifrado de sobre por usuario (**passthrough en dev**) | `inbound.media` → `media.stored` | 8 |
+| `chatbot-gateway` | Canal principal: rieles + LLM on-prem **no autoritativo** + memoria pgvector + desambiguación | `inbound.text` → `outbound.reply`/`report.received`/`face.disambiguation.resolved` | 33 |
+| `output-service` | Salida a Graph API: texto / plantilla HSM (ventana 24h) + **imagen y botón de opciones** (desambiguación) | `outbound.reply` → Meta | 10 |
+| `media-gateway` | **Entrega de medios por URL firmada** (ADR-0017): dos planos (público `GET /m/{token}` + interno `POST /grants`) | `POST /grants` → URL firmada | 28 |
+| `core-backend` | API + orquestador: reportes, estados, **auditoría SHA-256** | `report.received` → `report.ingested`/`state.changed` | 21 |
+| `matching-worker` | Motor facial **ArcFace 512-d** (GPU) + enrolamiento/desambiguación + revocación de concesiones | `report.ingested` → `entity.enrolled`/`enrollment.failed`/`face.disambiguation.requested` | 47 |
 | `llm` | LLM on-premises (Ollama, GPU) — sin código propio | inferencia para `chatbot-gateway` | — |
 
-**Total: 99 tests unitarios en verde.** Detalle por servicio en su `README.md` y `docs/design.md`.
+**Total: 174 tests unitarios en verde.** Detalle por servicio en su `README.md` y `docs/design.md`.
 
 Cada servicio hereda los controles del threat model (`docs/02-design/threat-model.md`) y de los ADRs
 (`docs/00-project/adr/`). Dev local con `docker-compose.yml`; despliegue EKS con `deploy/k8s` (ADR-0014).
