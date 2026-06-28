@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inference-worker-config
+data:
+  AWS_REGION: "sa-east-1"
+  SQS_EXTRACT_QUEUE_URL: "https://sqs.sa-east-1.amazonaws.com/ACCOUNT_ID/face-extract-requested"
+  SNS_FACE_EMBEDDED_ARN: "arn:aws:sns:sa-east-1:ACCOUNT_ID:face-embedded"
+  ARCFACE_MODEL_ROOT: "/models/insightface"
+  PRODUCER: "inference-worker"

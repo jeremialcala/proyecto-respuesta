@@ -1,0 +1,21 @@
+# KEDA: escala el plano de inferencia por profundidad de su cola SQS face-extract-requested (ADR-0019).
+# Este es el componente GPU que absorbe la ola: mínimo caliente (cold-start del engine es caro) y máximo
+# alto para drenar el pico. Para el burst a vast.ai, el disparador (KEDA → API de aprovisionamiento) es
+# una DECISIÓN ABIERTA del ADR-0019; aquí se escala dentro del clúster por profundidad de cola.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: inference-worker
+spec:
+  scaleTargetRef: {name: inference-worker}
+  minReplicaCount: 1     # pool caliente: evita el cold-start del engine en la primera ola
+  maxReplicaCount: 10    # drena olas post-evento (recalibrar — fase 04 / PoC)
+  cooldownPeriod: 120
+  triggers:
+    - type: aws-sqs-queue
+      authenticationRef: {name: keda-aws-irsa}
+      metadata:
+        queueURL: https://sqs.sa-east-1.amazonaws.com/ACCOUNT_ID/face-extract-requested
+        queueLength: "20"
+        awsRegion: sa-east-1
+        identityOwner: operator

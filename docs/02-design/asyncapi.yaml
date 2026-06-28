@@ -139,6 +139,20 @@ channels:
     subscribe:
       operationId: consumeFaceDisambiguationResolved
       message: { $ref: '#/components/messages/FaceDisambiguationResolved' }
+  face.extract.requested:
+    description: >-
+      Petición del worker in-region al PLANO DE INFERENCIA (ADR-0019): la imagen mínima necesaria para
+      detección+embedding, correlada por `job_id`. Procesamiento EFÍMERO: el nodo no persiste la imagen.
+    publish:
+      operationId: onFaceExtractRequested
+      message: { $ref: '#/components/messages/FaceExtractRequested' }
+  face.embedded:
+    description: >-
+      Respuesta del plano de inferencia (ADR-0019): SOLO los vectores 512-d + geometría por rostro para
+      el `job_id`. Ninguna imagen viaja de vuelta ni se persiste; la galería/Vault permanecen en-región.
+    subscribe:
+      operationId: consumeFaceEmbedded
+      message: { $ref: '#/components/messages/FaceEmbedded' }
 
 components:
   messages:
@@ -193,6 +207,12 @@ components:
     FaceDisambiguationResolved:
       name: FaceDisambiguationResolved
       payload: { $ref: '#/components/schemas/FaceDisambiguationResolved' }
+    FaceExtractRequested:
+      name: FaceExtractRequested
+      payload: { $ref: '#/components/schemas/FaceExtractRequested' }
+    FaceEmbedded:
+      name: FaceEmbedded
+      payload: { $ref: '#/components/schemas/FaceEmbedded' }
 
   schemas:
     MetaChannel:
@@ -444,3 +464,38 @@ components:
         channel: { type: string, enum: [whatsapp, instagram, messenger, telegram, web] }
         opt_in: { type: boolean }
         sent_at: { type: string, format: date-time }
+    FaceExtractRequested:
+      type: object
+      description: >-
+        Trabajo de extracción para el plano de inferencia (ADR-0019). Envía el mínimo necesario; el nodo
+        descarta la imagen tras procesar (efímero, A04). El destino (EKS/on-prem/vast.ai) es configuración.
+      required: [job_id, image_b64]
+      properties:
+        job_id: { type: string, description: 'Correlación petición↔respuesta (face.embedded).' }
+        image_b64: { type: string, description: 'Imagen/cara mínima en base64; no se persiste en el nodo.' }
+    FaceEmbedded:
+      type: object
+      description: >-
+        Resultado del plano de inferencia (ADR-0019): SOLO vectores 512-d + geometría. Sin imágenes de
+        vuelta. El matching/galería/Vault permanecen en-región (ADR-0006/0008).
+      required: [job_id, faces]
+      properties:
+        job_id: { type: string }
+        faces:
+          type: array
+          items: { $ref: '#/components/schemas/EmbeddedFace' }
+    EmbeddedFace:
+      type: object
+      description: 'Un rostro detectado con su embedding 512-d normalizado y geometría (ADR-0013).'
+      required: [embedding]
+      properties:
+        embedding:
+          type: array
+          items: { type: number }
+          minItems: 512
+          maxItems: 512
+          description: 'Vector ArcFace/IResNet100 512-d normalizado.'
+        bbox: { $ref: '#/components/schemas/BBox' }
+        det_score: { type: number, minimum: 0, maximum: 1 }
+        size_px: { type: integer }
+        blur_var: { type: number }

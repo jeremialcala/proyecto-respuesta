@@ -110,7 +110,7 @@ docs/
 | 00 · Project | — | ✅ Charter, glosario, clasificación de datos |
 | 01 · Requirements | Gate 0 | ✅ PRD del flujo central con escenarios de abuso y OWASP |
 | 02 · Design | Gate 1 | ✅ C4, threat model STRIDE/DREAD, **ADR-0001…0017** y contratos OpenAPI/AsyncAPI (deuda documentada) |
-| 03 · Implementation | Gate 2 | 🚧 Flujo central E2E: `webhook-gateway` (**14**), `meta-handler` (**13**), `vault-worker` (**8**), `chatbot-gateway` (LLM + memoria pgvector, **33**), `output-service` (texto/HSM + imagen+botones, **10**), `media-gateway` (URL firmada, **28**), `core-backend` (reportes+estados+auditoría SHA-256, **21**) + `matching-worker` (ArcFace + enrolamiento/desambiguación/revocación + idempotencia, **51**). **178 tests en verde**; afinado con infra real pendiente |
+| 03 · Implementation | Gate 2 | 🚧 Flujo central E2E: `webhook-gateway` (**14**), `meta-handler` (**13**), `vault-worker` (**8**), `chatbot-gateway` (LLM + memoria pgvector, **33**), `output-service` (texto/HSM + imagen+botones, **10**), `media-gateway` (URL firmada, **28**), `core-backend` (reportes+estados+auditoría SHA-256, **21**) + `matching-worker` (ArcFace + enrolamiento/desambiguación/revocación + idempotencia + extractor local/remoto, **59**). **186 tests en verde**; afinado con infra real pendiente |
 | 05 · Deployment | Gate 4 | 🚧 Apps **container-ready**: Dockerfiles, `docker-compose` (dev) y `deploy/k8s` para EKS (IRSA, ALB+HPA, KEDA, GPU) — ADR-0014. CI/CD e IaC pendientes |
 | 04 · Testing / 06 · Monitoring | Gates 3, 5 | ⬜ Pendiente (estructura creada) |
 

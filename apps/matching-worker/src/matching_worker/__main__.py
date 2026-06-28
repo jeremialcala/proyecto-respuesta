@@ -23,11 +23,29 @@ from .adapters.http_grant_revoker import HttpGrantRevoker
 from .adapters.pg_pending_enrollment_store import PgPendingEnrollmentStore
 from .adapters.pg_processed_event_store import PgProcessedEventStore
 from .adapters.pgvector_store import PgvectorEmbeddingStore
+from .adapters.remote_face_extractor import RemoteFaceExtractor
 from .adapters.sqs_consumer import SqsConsumer
+from .adapters.sqs_request_reply import SqsRequestReplyClient
 from .adapters.sqs_sns_event_bus import SnsEventBus
 from .adapters.vault_media_gateway import VaultMediaGateway
 
 log = logging.getLogger(__name__)
+
+
+def build_face_mapper(cfg: WorkerConfig):
+    """Extractor LOCAL (GPU in-region) o REMOTO (plano de inferencia por el bus) según config (ADR-0019).
+
+    El destino del plano remoto (EKS/on-prem/vast.ai) es configuración: el caso de uso no cambia. En
+    modo remoto, el `crop_faces` (cv2, sin GPU) sigue corriendo in-region vía un ArcFaceMapper interno.
+    """
+    if cfg.face_extractor == "remote":
+        client = SqsRequestReplyClient(cfg.extract_topic_arn, cfg.face_embedded_reply_queue_url,
+                                       cfg.aws_region, producer=cfg.producer)
+        log.info("extractor facial: REMOTO (plano de inferencia, ADR-0019)")
+        return RemoteFaceExtractor(client, cropper=ArcFaceMapper(cfg.arcface_model_root),
+                                   timeout=cfg.extract_timeout_seconds)
+    log.info("extractor facial: LOCAL (GPU in-region)")
+    return ArcFaceMapper(cfg.arcface_model_root)
 
 
 def build_enrollment_service(cfg: WorkerConfig):
@@ -46,7 +64,7 @@ def build_enrollment_service(cfg: WorkerConfig):
         "enrollment.failed": cfg.enrollment_failed_topic_arn,
         "face.disambiguation.requested": cfg.disambiguation_requested_topic_arn,
     }, cfg.aws_region, producer=cfg.producer)
-    face_mapper = ArcFaceMapper(cfg.arcface_model_root)
+    face_mapper = build_face_mapper(cfg)
     media = VaultMediaGateway(cfg.aws_region, cfg.crops_bucket, sse=cfg.s3_sse)
     # Revoca las concesiones del media-gateway al purgar (ADR-0016 §6); sin URL configurada, se omite.
     revoker = HttpGrantRevoker(cfg.media_gateway_url) if cfg.media_gateway_url else None

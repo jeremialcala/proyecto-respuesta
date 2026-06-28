@@ -54,10 +54,20 @@ para drenar olas); el LLM mantiene su propio dimensionamiento. **Prerrequisito d
 groups GPU (en EKS sa-east-1 y/o nodos on-prem) que porten esas etiquetas/taints — su IaC (eksctl/
 Terraform) es parte del pendiente Gate 4.
 
+**Plano de inferencia portable + burst (ADR-0019):** la extracción de embedding (GPU) se separa en una
+**imagen OCI dedicada** (`apps/matching-worker/Dockerfile.inference`, **distinta** de la del worker),
+stateless y **sin secretos**: consume `face.extract.requested`, devuelve `face.embedded` (**solo el
+vector 512-d**; la galería/Vault/pgvector permanecen en-región). El worker in-region elige extractor por
+config (`FACE_EXTRACTOR=local|remote`): en `remote` hace request-reply por el bus contra el plano de
+inferencia, que puede correr en EKS sa-east-1, on-prem **o** vast.ai Secure Cloud (**destino =
+configuración**). El **egress real a terceros está gated** por validación legal + PoC (decisiones
+abiertas del ADR-0019). En modo `remote`, el matching-worker puede correr **CPU-only**.
+
 | App | Tipo | Exposición | Escalado | Notas |
 | :-- | :-- | :-- | :-- | :-- |
 | webhook-gateway | HTTP sin estado | Ingress ALB (TLS ACM) | HPA (CPU) | publica `meta-received` |
-| matching-worker | Worker por cola | — | KEDA (profundidad SQS) | pool GPU `facematch` dedicado (ADR-0018), ArcFace; idempotente por `event_id` |
+| matching-worker | Worker por cola | — | KEDA (profundidad SQS) | pool GPU `facematch` dedicado (ADR-0018), ArcFace; idempotente por `event_id`; extractor local/remoto (ADR-0019) |
+| inference-worker | Worker por cola (stateless) | — | KEDA (profundidad SQS) | imagen de inferencia portable (ADR-0019), pool GPU `facematch`, **sin secretos**, solo-vector |
 | llm | Inferencia (Ollama) | ClusterIP | fijo (1) | pool GPU `llm` dedicado (ADR-0001/0018), no autoritativo |
 
 Secretos esperados (creados por External Secrets, **no** versionados):

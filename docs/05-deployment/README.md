@@ -19,6 +19,10 @@ Contenedores y orquestación implementados en `deploy/` y por app:
 - **Planos GPU separados (ADR-0018)**: el facematch corre en un **pool GPU dedicado** (`nodeSelector` +
   taint `respuesta.io/gpu-pool=facematch`) distinto del pool del LLM, con `podAntiAffinity` recíproca,
   para que ninguna ola de matching degrade la latencia conversacional y cada carga escale por su métrica.
+- **Imagen de inferencia portable (ADR-0019)**: la extracción de embedding se separa en una **imagen OCI
+  dedicada** (`Dockerfile.inference`), stateless y **sin secretos**, que devuelve **solo el vector 512-d**
+  (`face.extract.requested`→`face.embedded`). Corre en EKS sa-east-1, on-prem o vast.ai Secure Cloud por
+  **configuración**; el worker in-region elige extractor `local|remote`. Egress real gated por legal/PoC.
 
 Ver [ADR-0014](../00-project/adr/0014-contenedores-despliegue-eks.md) y `deploy/README.md`.
 

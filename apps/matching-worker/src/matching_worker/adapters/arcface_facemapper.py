@@ -11,8 +11,6 @@ Implementación pendiente de afinado (fase 03/04):
 """
 from __future__ import annotations
 
-import numpy as np  # noqa: F401  (usado al decodificar/normalizar)
-
 from ..config import ArcFaceParams, QualityThresholds
 from ..domain.models import BBox, FaceMap, FaceQuality
 
@@ -36,6 +34,7 @@ class ArcFaceMapper:
         return self._app
 
     def _to_facemap(self, face) -> FaceMap:
+        import numpy as np  # import perezoso (la imagen/decodificación trae numpy)
         emb = np.asarray(face.normed_embedding, dtype="float32")  # 512-d ya normalizado
         x1, y1, x2, y2 = (int(v) for v in face.bbox.astype(int))
         size = int(min(x2 - x1, y2 - y1))

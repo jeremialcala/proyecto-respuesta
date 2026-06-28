@@ -93,6 +93,11 @@ class WorkerConfig:
     pending_ttl_seconds: int = 86400               # TTL del PendingEnrollment (alinear ADR-0007/0015)
     purge_interval_seconds: int = 3600             # cada cuánto corre purge_expired
     media_gateway_url: str = ""                    # plano interno del media-gateway (revoke-by-ref, ADR-0017)
+    # --- extractor facial: local (GPU in-region) o remoto (plano de inferencia, ADR-0019) ---
+    face_extractor: str = "local"                  # "local" | "remote"; destino remoto = configuración
+    extract_topic_arn: str = ""                    # SNS: face.extract.requested (→ plano de inferencia)
+    face_embedded_reply_queue_url: str = ""        # SQS: cola de respuesta (face.embedded) de este worker
+    extract_timeout_seconds: float = 30.0          # espera máxima del round-trip remoto
 
     @staticmethod
     def from_env() -> "WorkerConfig":
@@ -116,4 +121,36 @@ class WorkerConfig:
             pending_ttl_seconds=int(os.getenv("PENDING_TTL_SECONDS", "86400")),
             purge_interval_seconds=int(os.getenv("PURGE_INTERVAL_SECONDS", "3600")),
             media_gateway_url=os.getenv("MEDIA_GATEWAY_URL", ""),
+            face_extractor=os.getenv("FACE_EXTRACTOR", "local").lower(),
+            extract_topic_arn=os.getenv("SNS_FACE_EXTRACT_REQUESTED_ARN", ""),
+            face_embedded_reply_queue_url=os.getenv("SQS_FACE_EMBEDDED_REPLY_URL", ""),
+            extract_timeout_seconds=float(os.getenv("EXTRACT_TIMEOUT_SECONDS", "30")),
+        )
+
+
+@dataclass(frozen=True)
+class InferenceConfig:
+    """Config del plano de inferencia stateless (ADR-0019). Sin DSN, sin buckets, sin Vault.
+
+    Solo necesita transporte (SQS/SNS) y el modelo ArcFace: consume `face.extract.requested` y publica
+    `face.embedded`. Pensado para correr en GPU dedicada (ADR-0018), incluido burst on-demand.
+    """
+    aws_region: str = "sa-east-1"
+    extract_queue_url: str = ""                    # SQS: face.extract.requested
+    face_embedded_topic_arn: str = ""              # SNS: face.embedded (fan-out a las colas de respuesta)
+    arcface_model_root: str = "/models/insightface"
+    max_messages: int = 10
+    wait_time_seconds: int = 20
+    producer: str = "inference-worker"
+
+    @staticmethod
+    def from_env() -> "InferenceConfig":
+        return InferenceConfig(
+            aws_region=os.getenv("AWS_REGION", "sa-east-1"),
+            extract_queue_url=os.getenv("SQS_EXTRACT_QUEUE_URL", ""),
+            face_embedded_topic_arn=os.getenv("SNS_FACE_EMBEDDED_ARN", ""),
+            arcface_model_root=os.getenv("ARCFACE_MODEL_ROOT", "/models/insightface"),
+            max_messages=int(os.getenv("SQS_MAX_MESSAGES", "10")),
+            wait_time_seconds=int(os.getenv("SQS_WAIT_SECONDS", "20")),
+            producer=os.getenv("PRODUCER", "inference-worker"),
         )

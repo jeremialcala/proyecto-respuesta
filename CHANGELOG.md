@@ -12,6 +12,21 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
 
 ### Added
 
+- **ADR-0019 — Imagen de inferencia ArcFace portable + procesamiento efímero** (`proposed`,
+  `docs/00-project/adr/0019-imagen-inferencia-arcface-tensorrt-vastai.md`): se realiza la **arquitectura
+  portable** para burst GPU on-demand (vast.ai Secure Cloud / EKS / on-prem; destino = configuración).
+  **Plano de inferencia stateless** dentro del paquete `matching_worker` con **imagen OCI dedicada**
+  (`Dockerfile.inference`, entrypoint `inference_main`): consume `face.extract.requested`, corre ArcFace
+  y publica `face.embedded` con **solo el vector 512-d** (sin DB/Vault/S3/secretos; galería e índice
+  permanecen en-región). En el worker in-region, **extractor seleccionable por config** (`FACE_EXTRACTOR=
+  local|remote`): `RemoteFaceExtractor` + `SqsRequestReplyClient` (request-reply por el bus, correlado
+  por `job_id`, timeout → redrive idempotente por `event_id`); `crop_faces` (cv2) sigue in-region.
+  Contrato nuevo en `asyncapi.yaml` (`face.extract.requested`/`face.embedded`, efímero solo-vector).
+  Manifiestos `deploy/k8s/inference-worker/` (Pod restricted `readOnlyRootFilesystem`/`drop:[ALL]`, **SA
+  sin secretos**, pool GPU `facematch` + anti-afinidad con `llm`, KEDA por profundidad de cola). **Egress
+  real gated** por decisiones abiertas (baking TensorRT, PoC, validación legal, disparador de burst).
+  `numpy` pasa a import perezoso en `arcface_facemapper`. **+8 tests** (matching-worker 51 → 59).
+
 - **ADR-0018 — Desacople del plano GPU LLM ↔ FaceMatch** (`accepted`,
   `docs/00-project/adr/0018-desacople-gpu-llm-facematch.md`): el facematch deja de compartir GPU con el
   LLM. **Manifiestos K8s** con **pool GPU dedicado** por `nodeSelector` + taint `respuesta.io/gpu-pool`

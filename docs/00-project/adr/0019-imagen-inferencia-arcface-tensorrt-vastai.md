@@ -7,6 +7,16 @@
 - **Controles OWASP afectados:** A04 (biométrico a sub-procesador), A05 (config/secretos), A02 (hardening), A08 (resiliencia/interrupción), `ai-sec`
 - **Relacionado:** [ADR-0006](0006-residencia-sao-paulo.md) (residencia sa-east-1), [ADR-0008](0008-boveda-llaves-identidad.md) (Vault/secretos), [ADR-0011](0011-contrato-eventos.md) (contrato de eventos), [ADR-0012](0012-broker-aws-sqs-sns.md) (SQS/SNS), [ADR-0013](0013-arcface-scoring-solo-rostro.md) (ArcFace/IResNet100), [ADR-0014](0014-contenedores-despliegue-eks.md) (imágenes OCI/EKS), [ADR-0018](0018-desacople-gpu-llm-facematch.md) (plano GPU separado). Análisis de soporte: `factibilidad-offload-gpu-vastai.md`.
 
+> **Estado de implementación (sigue `proposed`).** Realizada la **arquitectura portable** (prerrequisito
+> no negociable): plano de inferencia stateless con su **imagen OCI dedicada** (`Dockerfile.inference`,
+> entrypoint `matching_worker.inference_main`), **contrato efímero** `face.extract.requested` →
+> `face.embedded` (solo-vector), y **extractor seleccionable por configuración** (`FACE_EXTRACTOR=local|
+> remote`) en el worker in-region — el mismo flujo corre local o remoto sin reescritura. Manifiestos K8s
+> `deploy/k8s/inference-worker/` (restricted, **sin secretos**, pool GPU `facematch`, KEDA por cola).
+> **Pendiente (decisiones abiertas, gating del egress real):** baking del engine **TensorRT**, **PoC**
+> en vast.ai con datos sintéticos, **validación legal** de residencia + registro de sub-procesador,
+> **disparador del burst** (KEDA→API vast.ai) y **tokens de corta vida** hacia nodos efímeros.
+
 ## Contexto
 
 Con el plano GPU del facematch ya separado del LLM ([ADR-0018]), falta una estrategia de **elasticidad ante picos**: tras un evento, la cola de facematch puede crecer por encima de lo que absorbe la capacidad base en el SLO. La capacidad GPU en-región ([ADR-0006]/[ADR-0014]) es la base de cumplimiento, pero dimensionarla para el peor pico es caro y desaprovechado el 99 % del tiempo.

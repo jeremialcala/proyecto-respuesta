@@ -96,3 +96,17 @@ class ProcessedEventStore(Protocol):
     def purge_older_than(self, iso: str) -> int:
         """Borra entradas más viejas que `iso`; devuelve cuántas purgó."""
         ...
+
+
+class RequestReplyClient(Protocol):
+    """Transporte petición-respuesta hacia el plano de inferencia remoto (ADR-0019).
+
+    El worker in-region envía la imagen mínima y espera, correlado por `job_id`, los rostros con sus
+    embeddings 512-d. Lo implementa el `SqsRequestReplyClient` (publica `face.extract.requested`, hace
+    long-poll de su cola de respuesta `face.embedded`). Si expira, lanza `TimeoutError` → el handler SQS
+    no borra el mensaje (redrive/reintento), y la idempotencia por `event_id` evita el doble efecto.
+    """
+
+    def request(self, image_bytes: bytes, *, timeout: float) -> list[dict]:
+        """Devuelve la lista de rostros (dicts del `face_codec`) para `image_bytes`."""
+        ...

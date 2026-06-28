@@ -13,12 +13,17 @@ almacenamiento **pgvector** + índice **FAISS HNSW (d=512)**, tolerancia a **dri
 ```
 src/matching_worker/
 ├── domain/        # lógica pura, testeada: drift, fusion, quality, tracking, models (BBox, PendingEnrollment)
-├── application/   # ports + matching_service + enrollment_service (enrolamiento/desambiguación, ADR-0016)
+├── application/   # ports + matching_service + enrollment_service (ADR-0016) + inference_service (ADR-0019)
 ├── adapters/      # arcface, sqs_consumer, sqs_sns_event_bus, pgvector, faiss,
 │                  #   vault_media_gateway (S3/MinIO), pg_pending_enrollment_store, http_grant_revoker,
-│                  #   pg_processed_event_store (idempotencia por event_id, ADR-0018)
+│                  #   pg_processed_event_store (idempotencia, ADR-0018),
+│                  #   remote_face_extractor + sqs_request_reply (extractor remoto, ADR-0019)
+├── inference_main.py  # entrypoint del PLANO DE INFERENCIA (imagen `Dockerfile.inference`, ADR-0019)
 └── config.py      # parámetros (τ0, M/efSearch, umbrales) — se calibran en fase 04
 ```
+
+**Dos imágenes:** `Dockerfile` (worker de control, in-region) y `Dockerfile.inference` (plano de
+inferencia stateless, ADR-0019). El segundo reusa el mismo paquete (DRY) con otro entrypoint.
 
 Regla de dependencia: hacia adentro. El dominio no conoce infraestructura.
 
@@ -31,6 +36,14 @@ taint `respuesta.io/gpu-pool=facematch` + anti-afinidad). El consumo es **idempo
 (`PgProcessedEventStore`): SQS entrega *at-least-once*, así que un redelivery (pod que muere, GPU
 reclamada, visibility timeout vencido) se descarta sin re-enrolar ni re-preguntar — el `event_id` se
 marca **tras** procesar con éxito, preservando el redrive a DLQ cuando algo falla.
+
+**Plano de inferencia portable ([ADR-0019](../../docs/00-project/adr/0019-imagen-inferencia-arcface-tensorrt-vastai.md)):**
+la extracción de embedding (GPU) se separa en una **imagen stateless dedicada** (`Dockerfile.inference`,
+`inference_main`) que consume `face.extract.requested` y devuelve `face.embedded` con **solo el vector
+512-d** — sin DB/Vault/secretos; la galería/índice viven en-región. El worker in-region elige extractor
+por config (`FACE_EXTRACTOR=local|remote`); en `remote`, `RemoteFaceExtractor`+`SqsRequestReplyClient`
+hacen request-reply por el bus (timeout → redrive idempotente). El destino del plano remoto (EKS/on-prem/
+vast.ai Secure Cloud) es **configuración**. Egress real a terceros gated por validación legal + PoC.
 
 ## Estado
 

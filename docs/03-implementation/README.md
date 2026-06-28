@@ -6,7 +6,7 @@ Red-Green-Refactor-**Secure**, prompting seguro, controles de riesgos de IA, dob
 
 ## Estado de la implementación
 
-Flujo central del MVP implementado **test-first** en `apps/` (Clean Architecture/DDD, **178 tests
+Flujo central del MVP implementado **test-first** en `apps/` (Clean Architecture/DDD, **186 tests
 unitarios en verde**), container-ready (ADR-0014):
 
 - **Ingestión Meta**: `webhook-gateway` (firma + idempotencia → `meta.received`), `meta-handler`
@@ -20,7 +20,9 @@ unitarios en verde**), container-ready (ADR-0014):
 - **Núcleo**: `core-backend` (API + reportes/estados + **auditoría SHA-256** → `report.ingested`/
   `state.changed`) y `matching-worker` (**ArcFace 512-d** + **enrolamiento/desambiguación** ADR-0016 →
   `entity.enrolled`/`enrollment.failed`/`face.disambiguation.requested`; **idempotente por `event_id`**
-  → re-encolable sin doble efecto, ADR-0018).
+  → re-encolable sin doble efecto, ADR-0018). La **extracción de embedding** se separa en un **plano de
+  inferencia stateless portable** (imagen OCI dedicada, `face.extract.requested`→`face.embedded` solo-vector,
+  extractor `local|remote` por config — ADR-0019; egress a terceros gated por legal/PoC).
 
 Cada servicio usa deps perezosas en los adaptadores; los tests cubren dominio y casos de uso sin
 infraestructura. Pendientes de endurecimiento (placeholders explícitos): JWE real con Vault (ADR-0008),
@@ -28,4 +30,4 @@ descifrado de la bóveda en el matcher (en dev se usa **cipher passthrough + Min
 ClamAV + hashes CSAM (ADR-0005), rieles NeMo con modelo guardián (ADR-0002) y la traza Event/EventAction.
 
 **Gate 2 (cierre):** SAST limpio + SCA/lockfiles + cobertura objetivo + afinado con infra real.
-Hereda los controles RS-xx del PRD y las decisiones de los **ADR-0001…0018**.
+Hereda los controles RS-xx del PRD y las decisiones de los **ADR-0001…0019**.

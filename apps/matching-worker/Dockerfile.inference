@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1.7
+# Imagen de INFERENCIA ArcFace portable (ADR-0019) — DISTINTA de la imagen de control (`Dockerfile`).
+# Stateless: consume `face.extract.requested`, devuelve `face.embedded` (solo vectores). Sin DB/Vault/S3.
+# Pensada para GPU dedicada (ADR-0018) y burst on-demand verificado (vast.ai Secure Cloud / EKS / on-prem);
+# el destino es CONFIGURACIÓN, no código. Reusa el paquete `matching_worker` (DRY).
+#
+# Serving objetivo: TensorRT con el engine ArcFace/IResNet100 PRE-COMPILADO y horneado, para evitar el
+# cold-start de compilar en cada arranque (clave para el escalado elástico — ADR-0019 §1).
+#   TODO(decisión abierta ADR-0019): el baking del engine requiere GPU + el modelo en build (no se hace
+#   aquí). Distribución del engine (horneado en la imagen vs volumen de solo-lectura versionado por
+#   model=arcface/version=iresnet100) pendiente. Mientras tanto, InsightFace/ONNX-GPU sirve de base
+#   portable (la misma que el worker), seleccionable sin cambiar el código del servicio.
+ARG TRT_BASE=nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04
+FROM ${TRT_BASE} AS runtime
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3.10 python3-pip python3-dev build-essential libgl1 libglib2.0-0 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin appuser
+WORKDIR /app
+COPY pyproject.toml ./
+COPY src ./src
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --upgrade pip "setuptools>=68" wheel \
+    && pip3 install --timeout=120 --retries=10 .
+ENV PYTHONPATH=/app/src
+# Modelos en un directorio escribible por el no-root (o un volumen de solo-lectura con el engine horneado).
+RUN mkdir -p /models && chown -R 10001:10001 /models
+ENV ARCFACE_MODEL_ROOT=/models/insightface
+# Sin secretos en el nodo: recibe trabajo y devuelve vector vía el bus (ADR-0019 §4). Sin puerto HTTP.
+USER 10001
+CMD ["python3","-m","matching_worker.inference_main"]
