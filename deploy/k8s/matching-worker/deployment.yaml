@@ -16,9 +16,20 @@ spec:
         runAsNonRoot: true
         runAsUser: 10001
         seccompProfile: {type: RuntimeDefault}
-      # Nodos con GPU NVIDIA (g4dn/g5 en EKS, o nodo on-prem RTX 3090 vía nodo híbrido).
-      nodeSelector: {"nvidia.com/gpu.present": "true"}
-      tolerations: [{key: "nvidia.com/gpu", operator: "Exists", effect: "NoSchedule"}]
+      # Plano GPU DEDICADO del facematch, separado del LLM (ADR-0018): pool `facematch`, nunca la GPU
+      # del LLM. El node group GPU debe portar la etiqueta+taint `respuesta.io/gpu-pool=facematch`.
+      nodeSelector: {"respuesta.io/gpu-pool": "facematch"}
+      tolerations:
+        - {key: "respuesta.io/gpu-pool", operator: "Equal", value: "facematch", effect: "NoSchedule"}
+        - {key: "nvidia.com/gpu", operator: "Exists", effect: "NoSchedule"}
+      # Defensa en profundidad: aunque por error los pools compartieran nodos, un pod de facematch
+      # nunca co-reside con el LLM en la misma máquina física (elimina la contención GPU — ADR-0018).
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels: {app.kubernetes.io/name: llm}
+              topologyKey: kubernetes.io/hostname
       containers:
         - name: matching-worker
           image: respuesta/matching-worker:0.1.0

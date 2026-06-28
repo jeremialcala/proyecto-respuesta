@@ -77,7 +77,10 @@ eran de referencia para SFace; se **recalibran para ArcFace/IResNet100** en fase
 ## Decisiones abiertas
 
 - `<TODO>` Recalibración de umbral coseno para ArcFace/IResNet100 y de `α/β/Δ_max` (fase 04-testing).
-- ✅ **GPU MVP: RTX 3090 (24 GB)** on-prem, **compartida con el LLM** (ADR-0001). ArcFace IResNet100 usa ≈1-2 GB y deja inferencia rápida; bajo pico compite con el LLM por la GPU (mitiga la cola).
+- ✅ **GPU MVP: RTX 3090 (24 GB)** on-prem. _Decisión inicial: compartida con el LLM (ADR-0001)._
+  **Enmendada por [ADR-0018](0018-desacople-gpu-llm-facematch.md):** el facematch deja de compartir GPU
+  con el LLM y obtiene un **plano GPU dedicado** (la contención bajo pico era el cuello de botella);
+  cada carga escala por su propia métrica.
 - `<TODO>` Detector concreto de InsightFace (RetinaFace vs SCRFD) y política de fallback a CPU/YuNet.
 - `<TODO>` Plan de migración del índice y de los embeddings existentes (si los hubiera) a 512-d.
 - `<TODO>` Reescritura del adaptador `opencv_facemapper.py` → `arcface_facemapper.py` y `config.py`.

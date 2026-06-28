@@ -46,10 +46,19 @@ Requisitos del clúster (add-ons): **AWS Load Balancer Controller** (Ingress ALB
 por cola), **External Secrets Operator** (secretos desde Vault/Secrets Manager), **NVIDIA device
 plugin** (nodos GPU). Cada workload usa **IRSA** con permisos mínimos.
 
+**Planos GPU separados (ADR-0018):** el facematch **no comparte GPU con el LLM**. Cada uno corre en su
+**pool GPU dedicado** vía `nodeSelector` + taint `respuesta.io/gpu-pool` (`facematch` vs `llm`) y
+`podAntiAffinity` recíproca (defensa en profundidad: nunca co-residen en la misma máquina). El
+`matching-worker` escala por profundidad de su cola con KEDA (mínimo **caliente** para latencia, máximo
+para drenar olas); el LLM mantiene su propio dimensionamiento. **Prerrequisito de infra:** dos node
+groups GPU (en EKS sa-east-1 y/o nodos on-prem) que porten esas etiquetas/taints — su IaC (eksctl/
+Terraform) es parte del pendiente Gate 4.
+
 | App | Tipo | Exposición | Escalado | Notas |
 | :-- | :-- | :-- | :-- | :-- |
 | webhook-gateway | HTTP sin estado | Ingress ALB (TLS ACM) | HPA (CPU) | publica `meta-received` |
-| matching-worker | Worker por cola | — | KEDA (profundidad SQS) | GPU (`nvidia.com/gpu`), ArcFace |
+| matching-worker | Worker por cola | — | KEDA (profundidad SQS) | pool GPU `facematch` dedicado (ADR-0018), ArcFace; idempotente por `event_id` |
+| llm | Inferencia (Ollama) | ClusterIP | fijo (1) | pool GPU `llm` dedicado (ADR-0001/0018), no autoritativo |
 
 Secretos esperados (creados por External Secrets, **no** versionados):
 `webhook-gateway-secrets` (META_*), `matching-worker-secrets` (PGVECTOR_DSN, …).

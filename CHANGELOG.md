@@ -12,6 +12,22 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
 
 ### Added
 
+- **ADR-0018 — Desacople del plano GPU LLM ↔ FaceMatch** (`accepted`,
+  `docs/00-project/adr/0018-desacople-gpu-llm-facematch.md`): el facematch deja de compartir GPU con el
+  LLM. **Manifiestos K8s** con **pool GPU dedicado** por `nodeSelector` + taint `respuesta.io/gpu-pool`
+  (`facematch` vs `llm`) y `podAntiAffinity` recíproca (nunca co-residen en la misma máquina física);
+  KEDA del matching-worker afinado para pool dedicado (mínimo caliente, máximo para drenar olas). El
+  worker se vuelve **idempotente por `event_id`** ante redelivery de SQS (at-least-once): nuevo puerto
+  `ProcessedEventStore` + adaptador `PgProcessedEventStore` (tabla `processed_event`, `INSERT … ON
+  CONFLICT`), el `event_id` se marca **tras** procesar con éxito → una reentrega es no-op sin perder el
+  redrive a DLQ si el procesamiento falla; purga del ledger a 14 días en el job periódico. Enmienda la
+  decisión abierta "3090 compartida" de ADR-0013. **+4 tests** (matching-worker 47 → 51).
+
+### Changed
+
+- **matching-worker 47 → 51 tests**: cobertura de idempotencia (`report.ingested`/
+  `face.disambiguation.resolved` duplicados → un solo efecto; sin store inyectado, reprocesa como antes).
+
 - **ADR-0017 — Media Delivery Gateway** (`docs/00-project/adr/0017-media-delivery-gateway.md`) y
   **`apps/media-gateway` nuevo**: único endpoint **público de salida de medios** (espejo del
   webhook-gateway). Entrega binarios cifrados de la bóveda (ADR-0005/0008) por **URL firmada que Meta

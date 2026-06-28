@@ -129,6 +129,7 @@ services:
 
   # Ollama empaquetado: opt-in con `--profile llm`. Por defecto el chatbot usa el Ollama del HOST
   # (OLLAMA_URL apunta a host.docker.internal:11434), así no se levanta un segundo Ollama.
+  # Plano GPU del LLM — separado del facematch (perfil `gpu`) en prod (ADR-0018, planos GPU dedicados).
   llm:
     image: ollama/ollama:latest
     profiles: ["llm"]
@@ -232,6 +233,8 @@ services:
 
   matching-worker:
     build: ./apps/matching-worker
+    # Plano GPU del facematch — separado del LLM (perfil `llm`) en prod (ADR-0018). En dev-local con una
+    # sola GPU, corre el perfil `gpu` o el `llm`, no ambos a la vez (o en hosts distintos).
     profiles: ["gpu"]   # requiere NVIDIA Container Toolkit; omitido en `up` por defecto
     depends_on:
       postgres: {condition: service_healthy}

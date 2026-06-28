@@ -13,7 +13,7 @@ import logging
 import os
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from .application.enrollment_service import EnrollmentService
 from .config import WorkerConfig
@@ -21,6 +21,7 @@ from .adapters.arcface_facemapper import ArcFaceMapper
 from .adapters.faiss_index import FaissAnnIndex
 from .adapters.http_grant_revoker import HttpGrantRevoker
 from .adapters.pg_pending_enrollment_store import PgPendingEnrollmentStore
+from .adapters.pg_processed_event_store import PgProcessedEventStore
 from .adapters.pgvector_store import PgvectorEmbeddingStore
 from .adapters.sqs_consumer import SqsConsumer
 from .adapters.sqs_sns_event_bus import SnsEventBus
@@ -30,13 +31,15 @@ log = logging.getLogger(__name__)
 
 
 def build_enrollment_service(cfg: WorkerConfig):
-    """Construye el EnrollmentService y devuelve también el PendingStore (para el job de purga)."""
+    """Construye el EnrollmentService y devuelve también los stores con job de purga (pending, seen)."""
     store = PgvectorEmbeddingStore(cfg.pgvector_dsn)
     store.init_schema()
     index = FaissAnnIndex()
     index.rebuild_from(store)                 # HNSW se reconstruye desde pgvector (fuente de verdad)
     pending = PgPendingEnrollmentStore(cfg.pgvector_dsn)
     pending.init_schema()
+    seen = PgProcessedEventStore(cfg.pgvector_dsn)   # idempotencia por event_id (ADR-0018)
+    seen.init_schema()
     bus = SnsEventBus({
         "candidate.generated": cfg.output_topic_arn,
         "entity.enrolled": cfg.entity_enrolled_topic_arn,
@@ -49,10 +52,10 @@ def build_enrollment_service(cfg: WorkerConfig):
     revoker = HttpGrantRevoker(cfg.media_gateway_url) if cfg.media_gateway_url else None
     service = EnrollmentService(
         face_mapper=face_mapper, media=media, store=store, index=index,
-        pending=pending, bus=bus, grant_revoker=revoker,
+        pending=pending, bus=bus, grant_revoker=revoker, seen_events=seen,
         pending_ttl_seconds=cfg.pending_ttl_seconds, crop_ttl_seconds=cfg.pending_ttl_seconds,
     )
-    return service, pending
+    return service, pending, seen
 
 
 def build_consumers(cfg: WorkerConfig, service: EnrollmentService) -> list[SqsConsumer]:
@@ -65,16 +68,29 @@ def build_consumers(cfg: WorkerConfig, service: EnrollmentService) -> list[SqsCo
     ]
 
 
-def _purge_loop(pending: PgPendingEnrollmentStore, interval: int) -> None:
+# Retención del ledger de idempotencia: cubre la retención máxima de SQS (14 días) para que ninguna
+# reentrega tardía escape al dedup. Más allá, el mensaje ya no existe en la cola.
+_SEEN_RETENTION_DAYS = 14
+
+
+def _purge_loop(pending: PgPendingEnrollmentStore, seen: PgProcessedEventStore, interval: int) -> None:
     while True:
         time.sleep(interval)
+        now = datetime.now(timezone.utc)
         try:
-            now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            now_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
             n = pending.purge_expired(now_iso)
             if n:
                 log.info("purga: %d PendingEnrollment vencidos eliminados", n)
         except Exception:
-            log.exception("job de purga falló")
+            log.exception("job de purga (pending) falló")
+        try:
+            cutoff = (now - timedelta(days=_SEEN_RETENTION_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            m = seen.purge_older_than(cutoff)
+            if m:
+                log.info("purga: %d eventos procesados antiguos eliminados", m)
+        except Exception:
+            log.exception("job de purga (processed_event) falló")
 
 
 def main() -> None:
@@ -83,13 +99,13 @@ def main() -> None:
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
     cfg = WorkerConfig.from_env()
-    service, pending = build_enrollment_service(cfg)
+    service, pending, seen = build_enrollment_service(cfg)
     consumers = build_consumers(cfg, service)
 
     threads = [threading.Thread(target=c.start, name=c._name, daemon=True) for c in consumers]
     for t in threads:
         t.start()
-    threading.Thread(target=_purge_loop, args=(pending, cfg.purge_interval_seconds),
+    threading.Thread(target=_purge_loop, args=(pending, seen, cfg.purge_interval_seconds),
                      name="purge", daemon=True).start()
     log.info("matching-worker arriba: enrolamiento + desambiguación (ADR-0016)")
     for t in threads:

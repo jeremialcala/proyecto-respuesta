@@ -96,6 +96,21 @@ class FakeRevoker:
         self.calls.append((report_id, list(media_refs)))
 
 
+class FakeSeen:
+    """Ledger de idempotencia en memoria (ADR-0018)."""
+    def __init__(self):
+        self.ids = set()
+
+    def already_processed(self, event_id):
+        return event_id in self.ids
+
+    def mark_processed(self, event_id):
+        self.ids.add(event_id)
+
+    def purge_older_than(self, iso):
+        return 0
+
+
 class FakeBus:
     def __init__(self):
         self.events = []
@@ -120,15 +135,15 @@ def _face(emb=(0.1, 0.2), size=120, blur=80.0, x1=0, det=0.9):
                    bbox=BBox(x1, 0, x1 + 90, 100), det_score=det)
 
 
-def _svc(faces, *, pending=None, fixed_id="dis_fixed", now=None, revoker=None):
+def _svc(faces, *, pending=None, fixed_id="dis_fixed", now=None, revoker=None, seen=None):
     fm, media, store, index, pend, bus = (
         FakeMapper(faces), FakeMedia(), FakeStore(), FakeIndex(), pending or FakePending(), FakeBus())
     now_fn = (lambda: now) if now else (lambda: datetime.now(timezone.utc))
     svc = EnrollmentService(fm, media, store, index, pend, bus, QualityThresholds(),
-                            grant_revoker=revoker,
+                            grant_revoker=revoker, seen_events=seen,
                             pending_ttl_seconds=3600, now_fn=now_fn, id_fn=lambda: fixed_id)
     return svc, dict(fm=fm, media=media, store=store, index=index, pending=pend, bus=bus,
-                     revoker=revoker)
+                     revoker=revoker, seen=seen)
 
 
 def _ingested(entity="ent_1", report="rep_1", media_ref="vault://m/1", ck="conv_1"):
@@ -285,3 +300,42 @@ def test_no_revoker_configured_still_purges_crops():
     svc.on_report_ingested(_ingested())
     svc.on_disambiguation_resolved(_resolve(selected_index=1))
     assert set(d["media"].deleted) == {"vault://crop/0", "vault://crop/1"}
+
+
+# --- idempotencia ante redelivery por event_id (ADR-0018) ---
+def test_duplicate_report_ingested_enrolls_once():
+    seen = FakeSeen()
+    svc, d = _svc([_face(emb=(0.3, 0.4))], seen=seen)
+    svc.on_report_ingested(_ingested())     # event_id="e1"
+    svc.on_report_ingested(_ingested())     # redelivery del mismo event_id → no-op
+    assert d["store"].refs == [("ent_1", (0.3, 0.4))]        # enrolado una sola vez
+    assert d["bus"].types().count("entity.enrolled") == 1    # un solo aviso al reportante
+    assert "e1" in seen.ids
+
+
+def test_duplicate_report_ingested_requests_disambiguation_once():
+    seen = FakeSeen()
+    svc, d = _svc([_face(x1=0), _face(x1=300)], seen=seen)
+    svc.on_report_ingested(_ingested())
+    svc.on_report_ingested(_ingested())     # redelivery → no segundo disambiguation_id ni recortes extra
+    assert d["bus"].types().count("face.disambiguation.requested") == 1
+    assert len(d["media"].stored) == 1       # store_crops una sola vez (sin recortes huérfanos)
+
+
+def test_without_seen_store_reprocesses_as_before():
+    # Sin ProcessedEventStore (no inyectado) el comportamiento actual no cambia: reprocesa.
+    svc, d = _svc([_face(emb=(0.3, 0.4))])
+    svc.on_report_ingested(_ingested())
+    svc.on_report_ingested(_ingested())
+    assert len(d["store"].refs) == 2         # sin dedup, enrola dos veces
+
+
+def test_duplicate_resolved_with_seen_is_noop():
+    seen = FakeSeen()
+    svc, d = _svc([_face(emb=(1.0, 0.0), x1=0), _face(emb=(0.0, 1.0), x1=300)], seen=seen)
+    svc.on_report_ingested(_ingested())
+    svc.on_disambiguation_resolved(_resolve(selected_index=0))   # event_id="r1"
+    deleted_after_first = set(d["media"].deleted)
+    svc.on_disambiguation_resolved(_resolve(selected_index=0))   # redelivery → no-op por event_id
+    assert d["bus"].types().count("entity.enrolled") == 1
+    assert set(d["media"].deleted) == deleted_after_first

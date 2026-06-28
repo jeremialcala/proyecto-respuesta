@@ -20,7 +20,7 @@ from typing import Callable, Optional
 from ..config import QualityThresholds
 from ..domain.models import FaceMap, PendingEnrollment, PendingFace
 from .ports import (AnnIndex, EmbeddingStore, EventBus, FaceMapper, GrantRevoker, MediaGateway,
-                    PendingEnrollmentStore)
+                    PendingEnrollmentStore, ProcessedEventStore)
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +53,7 @@ class EnrollmentService:
         quality: QualityThresholds | None = None,
         *,
         grant_revoker: GrantRevoker | None = None,
+        seen_events: ProcessedEventStore | None = None,
         pending_ttl_seconds: int = 86400,
         crop_ttl_seconds: int = 86400,
         now_fn: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
@@ -66,6 +67,7 @@ class EnrollmentService:
         self._bus = bus
         self._q = quality or QualityThresholds()
         self._revoker = grant_revoker   # revoca las concesiones del media-gateway al purgar (ADR-0016 §6)
+        self._seen = seen_events        # idempotencia ante redelivery por event_id (ADR-0018)
         self._pending_ttl = pending_ttl_seconds
         self._crop_ttl = crop_ttl_seconds
         self._now = now_fn
@@ -113,8 +115,27 @@ class EnrollmentService:
         if self._revoker is not None:
             self._revoker.revoke_grants(report_id=pending.report_id, media_refs=crop_refs)
 
+    def _seen_before(self, envelope: dict) -> bool:
+        """True si este event_id ya se procesó (redelivery → no-op). Idempotencia ADR-0018."""
+        eid = envelope.get("event_id")
+        return bool(eid) and self._seen is not None and self._seen.already_processed(eid)
+
+    def _mark_done(self, envelope: dict) -> None:
+        """Registra el event_id tras procesar con éxito (no se llama si el handler lanza)."""
+        eid = envelope.get("event_id")
+        if eid and self._seen is not None:
+            self._seen.mark_processed(eid)
+
     # --- report.ingested ---
     def on_report_ingested(self, envelope: dict) -> None:
+        if self._seen_before(envelope):
+            log.info("report.ingested duplicado event_id=%s → no-op (idempotencia)",
+                     envelope.get("event_id"))
+            return
+        self._handle_report_ingested(envelope)   # sólo early-return en paths felices; lanza en error real
+        self._mark_done(envelope)
+
+    def _handle_report_ingested(self, envelope: dict) -> None:
         p = envelope.get("payload", {}) or {}
         entity_id = p.get("entity_id")
         report_id = p.get("report_id")
@@ -171,6 +192,14 @@ class EnrollmentService:
 
     # --- face.disambiguation.resolved ---
     def on_disambiguation_resolved(self, envelope: dict) -> None:
+        if self._seen_before(envelope):
+            log.info("disambiguation.resolved duplicado event_id=%s → no-op (idempotencia)",
+                     envelope.get("event_id"))
+            return
+        self._handle_disambiguation_resolved(envelope)
+        self._mark_done(envelope)
+
+    def _handle_disambiguation_resolved(self, envelope: dict) -> None:
         p = envelope.get("payload", {}) or {}
         disambiguation_id = p.get("disambiguation_id")
         if not disambiguation_id:

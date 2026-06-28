@@ -15,7 +15,8 @@ src/matching_worker/
 ├── domain/        # lógica pura, testeada: drift, fusion, quality, tracking, models (BBox, PendingEnrollment)
 ├── application/   # ports + matching_service + enrollment_service (enrolamiento/desambiguación, ADR-0016)
 ├── adapters/      # arcface, sqs_consumer, sqs_sns_event_bus, pgvector, faiss,
-│                  #   vault_media_gateway (S3/MinIO), pg_pending_enrollment_store, http_grant_revoker
+│                  #   vault_media_gateway (S3/MinIO), pg_pending_enrollment_store, http_grant_revoker,
+│                  #   pg_processed_event_store (idempotencia por event_id, ADR-0018)
 └── config.py      # parámetros (τ0, M/efSearch, umbrales) — se calibran en fase 04
 ```
 
@@ -23,6 +24,13 @@ Regla de dependencia: hacia adentro. El dominio no conoce infraestructura.
 
 **Invariante de seguridad (probado en tests):** el face-match **nunca** auto-confirma; el drift y
 los menores **empujan a coordinador**. Solo el autoreporte (100 %) es automático.
+
+**Plano GPU dedicado + idempotencia ([ADR-0018](../../docs/00-project/adr/0018-desacople-gpu-llm-facematch.md)):**
+el facematch corre en un pool GPU **separado del LLM** (manifiestos en `deploy/k8s/`, `nodeSelector`/
+taint `respuesta.io/gpu-pool=facematch` + anti-afinidad). El consumo es **idempotente por `event_id`**
+(`PgProcessedEventStore`): SQS entrega *at-least-once*, así que un redelivery (pod que muere, GPU
+reclamada, visibility timeout vencido) se descarta sin re-enrolar ni re-preguntar — el `event_id` se
+marca **tras** procesar con éxito, preservando el redrive a DLQ cuando algo falla.
 
 ## Estado
 

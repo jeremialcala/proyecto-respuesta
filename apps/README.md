@@ -14,10 +14,10 @@ común (ADR-0011/0012).
 | `output-service` | Salida a Graph API: texto / plantilla HSM (ventana 24h) + **imagen y botón de opciones** (desambiguación) | `outbound.reply` → Meta | 10 |
 | `media-gateway` | **Entrega de medios por URL firmada** (ADR-0017): dos planos (público `GET /m/{token}` + interno `POST /grants`) | `POST /grants` → URL firmada | 28 |
 | `core-backend` | API + orquestador: reportes, estados, **auditoría SHA-256** | `report.received` → `report.ingested`/`state.changed` | 21 |
-| `matching-worker` | Motor facial **ArcFace 512-d** (GPU) + enrolamiento/desambiguación + revocación de concesiones | `report.ingested` → `entity.enrolled`/`enrollment.failed`/`face.disambiguation.requested` | 47 |
-| `llm` | LLM on-premises (Ollama, GPU) — sin código propio | inferencia para `chatbot-gateway` | — |
+| `matching-worker` | Motor facial **ArcFace 512-d** (pool GPU dedicado, ADR-0018) + enrolamiento/desambiguación + revocación de concesiones + **idempotente por `event_id`** | `report.ingested` → `entity.enrolled`/`enrollment.failed`/`face.disambiguation.requested` | 51 |
+| `llm` | LLM on-premises (Ollama, **pool GPU dedicado** separado del facematch, ADR-0018) — sin código propio | inferencia para `chatbot-gateway` | — |
 
-**Total: 174 tests unitarios en verde.** Detalle por servicio en su `README.md` y `docs/design.md`.
+**Total: 178 tests unitarios en verde.** Detalle por servicio en su `README.md` y `docs/design.md`.
 
 Cada servicio hereda los controles del threat model (`docs/02-design/threat-model.md`) y de los ADRs
 (`docs/00-project/adr/`). Dev local con `docker-compose.yml`; despliegue EKS con `deploy/k8s` (ADR-0014).

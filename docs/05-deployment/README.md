@@ -16,6 +16,9 @@ Contenedores y orquestación implementados en `deploy/` y por app:
   con DLQ por redrive (idempotente).
 - **EKS/AWS**: `deploy/k8s/` (kustomize) con IRSA por workload, Ingress ALB + HPA (gateway), KEDA por
   profundidad de cola + nodos GPU (matching), Pod Security restricted y secretos vía External Secrets.
+- **Planos GPU separados (ADR-0018)**: el facematch corre en un **pool GPU dedicado** (`nodeSelector` +
+  taint `respuesta.io/gpu-pool=facematch`) distinto del pool del LLM, con `podAntiAffinity` recíproca,
+  para que ninguna ola de matching degrade la latencia conversacional y cada carga escale por su métrica.
 
 Ver [ADR-0014](../00-project/adr/0014-contenedores-despliegue-eks.md) y `deploy/README.md`.
 

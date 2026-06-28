@@ -11,8 +11,19 @@ spec:
     metadata:
       labels: {app.kubernetes.io/name: llm}
     spec:
-      nodeSelector: {"nvidia.com/gpu.present": "true"}
-      tolerations: [{key: "nvidia.com/gpu", operator: "Exists", effect: "NoSchedule"}]
+      # Plano GPU DEDICADO del LLM, separado del facematch (ADR-0018/0001): pool `llm`. El node group
+      # GPU del LLM debe portar la etiqueta+taint `respuesta.io/gpu-pool=llm`.
+      nodeSelector: {"respuesta.io/gpu-pool": "llm"}
+      tolerations:
+        - {key: "respuesta.io/gpu-pool", operator: "Equal", value: "llm", effect: "NoSchedule"}
+        - {key: "nvidia.com/gpu", operator: "Exists", effect: "NoSchedule"}
+      # Simétrico al matching-worker: el LLM nunca co-reside con el facematch en la misma GPU física.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels: {app.kubernetes.io/name: matching-worker}
+              topologyKey: kubernetes.io/hostname
       containers:
         - name: ollama
           image: ollama/ollama:latest

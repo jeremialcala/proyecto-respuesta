@@ -1,6 +1,6 @@
 # ADR-0018: Desacople del plano GPU LLM ↔ FaceMatch (worker dedicado escalado por cola)
 
-- **Estado:** proposed
+- **Estado:** accepted
 - **Fecha:** 2026-06-28
 - **Decisores:** Jeremi
 - **Fase AI-DLC:** 05-deployment

@@ -1,13 +1,15 @@
-# KEDA: escala el worker por profundidad de la cola SQS report-ingested (ADR-0012).
-# GPU on-prem (1x RTX 3090) → maxReplicaCount conservador; en EKS con nodos GPU puede subir.
+# KEDA: escala el facematch por profundidad de su cola SQS report-ingested (ADR-0012/0018).
+# Con el plano GPU ya separado del LLM (ADR-0018), el pool dedicado escala por SU propia métrica sin
+# pelear con la inferencia conversacional: mínimo CALIENTE para latencia baja, máximo para drenar olas.
+# queueLength/maxReplicaCount/antigüedad de cola son DECISIONES ABIERTAS del ADR-0018 (calibrar fase 04).
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
   name: matching-worker
 spec:
   scaleTargetRef: {name: matching-worker}
-  minReplicaCount: 1
-  maxReplicaCount: 3
+  minReplicaCount: 1     # pool caliente: evita cold-start de ArcFace en la primera ola (ADR-0018 §3)
+  maxReplicaCount: 6     # pool GPU dedicado: puede escalar para drenar la ola (recalibrar — fase 04)
   cooldownPeriod: 120
   triggers:
     - type: aws-sqs-queue

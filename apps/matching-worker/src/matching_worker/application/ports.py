@@ -80,3 +80,19 @@ class PendingEnrollmentStore(Protocol):
     def purge_expired(self, now_iso: str) -> int:
         """Borra los pendientes vencidos; devuelve cuántos purgó."""
         ...
+
+
+class ProcessedEventStore(Protocol):
+    """Ledger de eventos ya procesados, para idempotencia ante redelivery (ADR-0018).
+
+    SQS entrega *at-least-once* (ADR-0012): un pod que muera tras producir efectos pero antes de borrar
+    el mensaje, o un visibility timeout que venza mientras ArcFace procesa, reentregan el evento. Marcar
+    el `event_id` **tras** procesar con éxito hace que la reentrega sea un no-op, sin perder el redrive a
+    DLQ cuando el procesamiento falla (el evento no se marca y reintenta).
+    """
+
+    def already_processed(self, event_id: str) -> bool: ...
+    def mark_processed(self, event_id: str) -> None: ...
+    def purge_older_than(self, iso: str) -> int:
+        """Borra entradas más viejas que `iso`; devuelve cuántas purgó."""
+        ...
