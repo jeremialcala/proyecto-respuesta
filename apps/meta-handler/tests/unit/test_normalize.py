@@ -38,6 +38,23 @@ def test_unsupported_type():
     assert out[0].type is MessageType.UNSUPPORTED
 
 
+def test_interactive_button_reply_flattens_to_text():
+    # El reportante toca un botón de la desambiguación (ADR-0016): llega como `interactive`.
+    out = normalize(_wa([{"id": "wamid.5", "from": "584120000000", "type": "interactive",
+                          "interactive": {"type": "button_reply",
+                                          "button_reply": {"id": "face:1", "title": "Rostro 2"}}}]))
+    m = out[0]
+    assert m.type is MessageType.TEXT and m.text == "Rostro 2"   # parseable por parse_selection → índice 1
+
+
+def test_interactive_list_reply_flattens_to_text():
+    out = normalize(_wa([{"id": "wamid.6", "from": "x", "type": "interactive",
+                          "interactive": {"type": "list_reply",
+                                          "list_reply": {"id": "face:none", "title": "Ninguno"}}}]))
+    m = out[0]
+    assert m.type is MessageType.TEXT and m.text == "Ninguno"
+
+
 def test_non_whatsapp_object_maps_channel():
     out = normalize({"object": "page", "entry": [{"changes": [{"value": {"messages": [
         {"id": "m", "from": "f", "type": "text", "text": {"body": "x"}}]}}]}]})

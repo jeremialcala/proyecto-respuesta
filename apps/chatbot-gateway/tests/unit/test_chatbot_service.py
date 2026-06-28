@@ -236,6 +236,8 @@ def test_disambiguation_requested_prompts_with_thumbnails_and_sets_state():
     assert res.outcome is Outcome.DISAMBIGUATION_PROMPTED
     assert "3" in pub.replies[0]["payload"]["jwe_body"]
     assert pub.replies[0]["payload"]["media_refs"] == ["s3://b/crop/0", "s3://b/crop/1", "s3://b/crop/2"]
+    # report_id viaja en el reply para que el output-service etiquete las concesiones (ADR-0016 §6)
+    assert pub.replies[0]["payload"]["report_id"] == "rep_1"
     # el siguiente mensaje del contacto se interpretará como selección
     ctx = store.load(conversation_key("bot-1", "whatsapp", "584120000000"), [], recent_n=0, top_k=0)
     assert ctx.profile.pending_disambiguation_id == "dis_1" and ctx.profile.pending_faces_count == 3

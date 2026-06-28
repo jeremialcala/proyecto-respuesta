@@ -29,6 +29,15 @@ def test_issue_persists_grant_and_returns_signed_url():
     assert events.GRANT_ISSUED in [e for e, _ in audit.records]
 
 
+def test_issue_tags_grant_with_report_id():
+    svc, store, _ = _service()
+    issued = svc.issue(media_ref="s3://b/m/s/1", content_type="image/jpeg",
+                       purpose=Purpose.DISAMBIGUATION_CROP, created_by="output-service",
+                       report_id="rep-1", entity_id="ent-1")
+    grant = store.get(issued.token_id)
+    assert grant.report_id == "rep-1" and grant.entity_id == "ent-1"
+
+
 def test_issue_overrides_ttl_and_max_uses():
     svc, store, _ = _service()
     issued = svc.issue(media_ref="s3://b/m/s/1", content_type="image/jpeg",

@@ -187,7 +187,8 @@ class ChatbotService:
         ctx = self._load_context(key, "")
         crop_refs = [f.get("crop_ref") for f in faces if f.get("crop_ref")]
         self._publish_reply(bot_id, channel, contact_ref, envelope.get("event_id", ""),
-                            _disambiguation_prompt(len(faces)), media_refs=crop_refs)
+                            _disambiguation_prompt(len(faces)), media_refs=crop_refs,
+                            report_id=p.get("report_id"))
         self._convos.save_profile(key, replace(
             ctx.profile, pending_disambiguation_id=disambiguation_id, pending_faces_count=len(faces)))
         return HandleResult(Outcome.DISAMBIGUATION_PROMPTED)
@@ -219,13 +220,16 @@ class ChatbotService:
                                  top_k=self._cfg.retrieval_k)
 
     # --- publicación ---
-    def _publish_reply(self, bot_id, channel, contact_ref, event_id, text, media_refs=None) -> None:
+    def _publish_reply(self, bot_id, channel, contact_ref, event_id, text, media_refs=None,
+                       report_id=None) -> None:
         payload = {
             "bot_id": bot_id, "channel": channel, "contact_ref": contact_ref,
             "jwe_body": text,   # el servicio de salida cifra/entrega; MVP texto plano
         }
         if media_refs:   # miniaturas a mostrar (desambiguación, ADR-0016); el servicio de salida las envía
             payload["media_refs"] = media_refs
+        if report_id:    # etiqueta las concesiones del media-gateway para revocarlas al purgar (§6)
+            payload["report_id"] = report_id
         self._reply.publish_reply(build_envelope("outbound.reply", payload, self._cfg.producer))
         self._log.record_action(event_id, "reply", "SENT", "")
 

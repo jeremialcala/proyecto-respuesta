@@ -51,11 +51,11 @@ class PgGrantStore:
     def create(self, grant: Grant) -> None:
         self._c().execute(
             "INSERT INTO grants (token_id, media_ref, audience, purpose, content_type, max_uses,"
-            " used_count, expires_at, revoked_at, created_by, created_at)"
-            " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            " used_count, expires_at, revoked_at, created_by, created_at, report_id, entity_id)"
+            " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (grant.token_id, grant.media_ref, grant.audience.value, grant.purpose.value,
              grant.content_type, grant.max_uses, grant.used_count, grant.expires_at,
-             grant.revoked_at, grant.created_by, grant.created_at))
+             grant.revoked_at, grant.created_by, grant.created_at, grant.report_id, grant.entity_id))
 
     def get(self, token_id: str) -> Grant | None:
         cur = self._c().execute(

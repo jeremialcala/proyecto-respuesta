@@ -49,3 +49,26 @@ class GraphSender:
         self._post(bot_id, {"messaging_product": "whatsapp", "to": contact_ref,
                             "type": "template",
                             "template": {"name": template, "language": {"code": lang}}})
+
+    def send_image(self, bot_id, channel, contact_ref, link, caption) -> None:
+        # Meta descarga el `link` (URL firmada del media-gateway) y lo renderiza en el chat (ADR-0017).
+        self._post(bot_id, {"messaging_product": "whatsapp", "to": contact_ref,
+                            "type": "image", "image": {"link": link, "caption": caption}})
+
+    def send_buttons(self, bot_id, channel, contact_ref, body, buttons) -> None:
+        # Reply buttons (≤3). WhatsApp limita el título a 20 caracteres.
+        action = {"buttons": [{"type": "reply", "reply": {"id": bid, "title": title[:20]}}
+                              for bid, title in buttons]}
+        self._post(bot_id, {"messaging_product": "whatsapp", "to": contact_ref,
+                            "type": "interactive",
+                            "interactive": {"type": "button", "body": {"text": body},
+                                            "action": action}})
+
+    def send_list(self, bot_id, channel, contact_ref, body, button_label, rows) -> None:
+        # Lista interactiva: un botón que abre el menú de filas (hasta 10). Título de fila ≤24 chars.
+        section = {"rows": [{"id": rid, "title": title[:24]} for rid, title in rows]}
+        self._post(bot_id, {"messaging_product": "whatsapp", "to": contact_ref,
+                            "type": "interactive",
+                            "interactive": {"type": "list", "body": {"text": body},
+                                            "action": {"button": button_label[:20],
+                                                       "sections": [section]}}})

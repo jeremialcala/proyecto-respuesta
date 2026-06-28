@@ -10,6 +10,7 @@ class OutputConfig:
     aws_region: str = "sa-east-1"
     input_queue_url: str = ""        # SQS: outbound.reply (lo publica el chatbot/notificador)
     graph_api_base: str = "https://graph.facebook.com/v20.0"
+    media_gateway_url: str = "http://media-gateway-internal:8081"  # plano interno (concesiones, ADR-0017)
     redis_url: str = "redis://localhost:6379/0"
     hsm_template: str = "jornada_update"   # única plantilla HSM aprobada (MVP, componente 1)
     hsm_lang: str = "es"
@@ -24,6 +25,7 @@ class OutputConfig:
             aws_region=os.getenv("AWS_REGION", "sa-east-1"),
             input_queue_url=os.getenv("SQS_INPUT_QUEUE_URL", ""),
             graph_api_base=os.getenv("GRAPH_API_BASE", "https://graph.facebook.com/v20.0"),
+            media_gateway_url=os.getenv("MEDIA_GATEWAY_URL", "http://media-gateway-internal:8081"),
             redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
             hsm_template=os.getenv("HSM_TEMPLATE", "jornada_update"),
             hsm_lang=os.getenv("HSM_LANG", "es"),

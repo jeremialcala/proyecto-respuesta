@@ -49,6 +49,10 @@ class Grant:
     created_at: int         # epoch segundos
     used_count: int = 0     # contador (autoridad: ledger)
     revoked_at: int | None = None  # None | epoch segundos
+    # Referencias de negocio para la revocación en lote al purgar (ADR-0016 §6). Opcionales: el token
+    # nunca las expone; solo permiten `revoke_by_ref` por reporte/entidad.
+    report_id: str | None = None
+    entity_id: str | None = None
 
     def is_revoked(self) -> bool:
         return self.revoked_at is not None

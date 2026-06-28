@@ -32,9 +32,11 @@ class GrantService:
 
     def issue(self, *, media_ref: str, content_type: str, purpose: Purpose, created_by: str,
               audience: Audience | None = None, ttl_s: int | None = None,
-              max_uses: int | None = None, now: int | None = None) -> IssuedGrant:
+              max_uses: int | None = None, report_id: str | None = None,
+              entity_id: str | None = None, now: int | None = None) -> IssuedGrant:
         """Emite una concesión sobre `media_ref`. Resuelve la política por `purpose`; el emisor puede
-        override-ar `audience`/`ttl_s`/`max_uses` (p. ej. `max_uses=1` estricto)."""
+        override-ar `audience`/`ttl_s`/`max_uses` (p. ej. `max_uses=1` estricto). `report_id`/`entity_id`
+        etiquetan la concesión para la revocación en lote al purgar (ADR-0016 §6)."""
         pol = policy_for(purpose)
         now = int(time.time()) if now is None else now
         expires_at = now + (ttl_s if ttl_s is not None else pol.ttl_s)
@@ -49,6 +51,8 @@ class GrantService:
             expires_at=expires_at,
             created_by=created_by,
             created_at=now,
+            report_id=report_id,
+            entity_id=entity_id,
         )
         self._store.create(grant)
         sig = self._signer.sign(token_id, expires_at)
@@ -56,6 +60,7 @@ class GrantService:
         self._audit.record(events.GRANT_ISSUED, {
             "token_id": token_id, "media_ref": media_ref, "purpose": purpose.value,
             "audience": grant.audience.value, "created_by": created_by, "expires_at": expires_at,
+            "report_id": report_id, "entity_id": entity_id,
         })
         return IssuedGrant(url=url, token_id=token_id, expires_at=expires_at)
 

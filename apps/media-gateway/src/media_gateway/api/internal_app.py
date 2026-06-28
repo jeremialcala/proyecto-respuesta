@@ -21,6 +21,8 @@ class GrantIn(BaseModel):
     audience: Audience | None = None
     ttl_s: int | None = None
     max_uses: int | None = None
+    report_id: str | None = None   # etiqueta para revocación en lote al purgar (ADR-0016 §6)
+    entity_id: str | None = None
 
 
 class RevokeByRefIn(BaseModel):
@@ -40,7 +42,8 @@ def create_internal_app(grants: GrantService) -> FastAPI:
     def issue(body: GrantIn) -> dict:
         issued = grants.issue(
             media_ref=body.media_ref, content_type=body.content_type, purpose=body.purpose,
-            created_by=body.channel, audience=body.audience, ttl_s=body.ttl_s, max_uses=body.max_uses)
+            created_by=body.channel, audience=body.audience, ttl_s=body.ttl_s, max_uses=body.max_uses,
+            report_id=body.report_id, entity_id=body.entity_id)
         return {"url": issued.url, "token_id": issued.token_id, "expires_at": issued.expires_at}
 
     @app.delete("/grants/{token_id}", status_code=204)

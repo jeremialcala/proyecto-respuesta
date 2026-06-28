@@ -6,6 +6,7 @@ import os
 
 from .application.output_service import OutputService
 from .adapters.graph_sender import GraphSender
+from .adapters.http_media_grant_client import HttpMediaGrantClient
 from .adapters.noop_event_log import NoopEventLog
 from .adapters.passthrough_cipher import PassthroughCipher
 from .adapters.redis_window_store import RedisWindowStore
@@ -20,6 +21,7 @@ def build_consumer(cfg: OutputConfig) -> SqsConsumer:
         window=RedisWindowStore(cfg.redis_url),
         sender=GraphSender(cfg.graph_api_base, dry_run=cfg.dry_run),
         event_log=NoopEventLog(),
+        grants=HttpMediaGrantClient(cfg.media_gateway_url, dry_run=cfg.dry_run),
     )
     return SqsConsumer(cfg.input_queue_url, cfg.aws_region, service,
                        cfg.max_messages, cfg.wait_time_seconds)
