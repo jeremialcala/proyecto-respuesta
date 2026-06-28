@@ -1,0 +1,8 @@
+# Copia a terraform.tfvars y completa. terraform.tfvars está en .gitignore.
+region      = "sa-east-1"
+account_id  = "772032166382"
+github_repo = "jeremialcala/proyecto-respuesta"
+
+# Genera uno aleatorio y NO lo comitees:  openssl rand -hex 16
+# El mismo valor va al secret AWS_ASSUME_EXTERNAL_ID en GitHub.
+external_id = "REEMPLAZA-CON-VALOR-ALEATORIO"

@@ -1,0 +1,87 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowedServiceEnvelope",
+      "Effect": "Allow",
+      "Action": [
+        "iam:*",
+        "kms:*",
+        "ec2:*",
+        "eks:*",
+        "ecr:*",
+        "sqs:*",
+        "sns:*",
+        "s3:*",
+        "secretsmanager:*",
+        "dynamodb:*",
+        "logs:*",
+        "cloudwatch:*",
+        "elasticloadbalancing:*",
+        "autoscaling:*",
+        "application-autoscaling:*",
+        "acm:*",
+        "route53:*",
+        "sts:AssumeRole",
+        "sts:GetCallerIdentity",
+        "sts:TagSession",
+        "tag:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenyOutsideHomeRegion",
+      "Effect": "Deny",
+      "NotAction": [
+        "iam:*",
+        "sts:*",
+        "ecr:GetAuthorizationToken",
+        "route53:*",
+        "acm:*",
+        "cloudfront:*",
+        "s3:ListAllMyBuckets",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringNotEquals": {
+          "aws:RequestedRegion": "${region}"
+        }
+      }
+    },
+    {
+      "Sid": "ProtectBoundaryItself",
+      "Effect": "Deny",
+      "Action": [
+        "iam:DeletePolicy",
+        "iam:DeletePolicyVersion",
+        "iam:CreatePolicyVersion",
+        "iam:SetDefaultPolicyVersion"
+      ],
+      "Resource": "arn:aws:iam::${account_id}:policy/${project}-ci-boundary"
+    },
+    {
+      "Sid": "DenyBoundaryRemoval",
+      "Effect": "Deny",
+      "Action": [
+        "iam:DeleteRolePermissionsBoundary",
+        "iam:DeleteUserPermissionsBoundary"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenyAuditTampering",
+      "Effect": "Deny",
+      "Action": [
+        "cloudtrail:StopLogging",
+        "cloudtrail:DeleteTrail",
+        "cloudtrail:UpdateTrail",
+        "config:DeleteConfigurationRecorder",
+        "config:StopConfigurationRecorder",
+        "guardduty:DeleteDetector",
+        "guardduty:DisassociateFromMasterAccount"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

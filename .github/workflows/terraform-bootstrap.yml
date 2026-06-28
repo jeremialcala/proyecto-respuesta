@@ -1,0 +1,101 @@
+name: terraform-bootstrap
+
+# Pipeline de provisioning de infra base (capa bootstrap).
+# Autenticación: access key del usuario respuesta-ci -> assume-role respuesta-tf-bootstrap.
+#
+# Secrets requeridos (Settings > Secrets and variables > Actions):
+#   AWS_CI_ACCESS_KEY_ID
+#   AWS_CI_SECRET_ACCESS_KEY
+#   AWS_ASSUME_EXTERNAL_ID
+#   AWS_BOOTSTRAP_ROLE_ARN     (output tf_bootstrap_role_arn)
+
+on:
+  pull_request:
+    paths:
+      - "deploy/terraform/**"
+  push:
+    branches: [main]
+    paths:
+      - "deploy/terraform/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tf-bootstrap
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: sa-east-1
+  TF_WORKDIR: deploy/terraform/bootstrap
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      # Configura las credenciales base (usuario CI) y, encadenado, asume el rol
+      # de provisioning con ExternalId. El usuario por sí solo no puede crear nada.
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_CI_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_CI_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_BOOTSTRAP_ROLE_ARN }}
+          role-external-id: ${{ secrets.AWS_ASSUME_EXTERNAL_ID }}
+          role-duration-seconds: 3600
+          role-session-name: gha-tf-bootstrap-plan
+
+      - name: terraform fmt check
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: terraform fmt -check -recursive
+
+      - name: terraform init
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: terraform init -input=false
+
+      - name: terraform validate
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: terraform validate
+
+      - name: terraform plan
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: terraform plan -input=false -no-color
+
+  apply:
+    needs: plan
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # Requiere aprobación manual: configura el environment 'production' con
+    # required reviewers en Settings > Environments.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_CI_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_CI_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_BOOTSTRAP_ROLE_ARN }}
+          role-external-id: ${{ secrets.AWS_ASSUME_EXTERNAL_ID }}
+          role-duration-seconds: 3600
+          role-session-name: gha-tf-bootstrap-apply
+
+      - name: terraform init
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: terraform init -input=false
+
+      - name: terraform apply
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: terraform apply -input=false -auto-approve
