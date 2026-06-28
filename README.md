@@ -35,7 +35,9 @@ Cuatro componentes: **Portal Web** (auth Auth0/OAuth2), **Chatbot**, **Back offi
 matching** (worker, **ArcFace/IResNet100 512-d**), sobre un backend que orquesta reportes, estados y
 federación. Mensajería asíncrona en **AWS SQS/SNS**; secretos y cifrado por usuario en **HashiCorp
 Vault**. Hosting bajo el **Modelo A** (operador humanitario internacional) en **AWS São Paulo
-`sa-east-1`**, con GPU on-prem (RTX 3090) para el MVP. Ver los diagramas C4:
+`sa-east-1`**, con GPU on-prem (RTX 3090) para el MVP. La entrega de medios cifrados se hace por
+**URL firmada** vía un **media-gateway** dedicado (ADR-0017), única superficie pública de salida. Ver
+los diagramas C4:
 
 - [C4 — Contexto](docs/architecture/c4-context.md)
 - [C4 — Contenedores](docs/architecture/c4-container.md)
@@ -62,7 +64,7 @@ documentos:
 .ai-dlc/
 ├── gates/                      Checklists Gate 0 (✅) y Gate 1 (✅ con deuda)
 └── templates/                  Plantillas reutilizables: prd, threat-model, adr
-apps/                           Servicios MVP: core-backend (API/estados/auditoría), matching-worker (ArcFace), ingestión Meta (webhook-gateway, meta-handler, vault-worker), chatbot-gateway (LLM) y output-service
+apps/                           Servicios MVP: core-backend (API/estados/auditoría), matching-worker (ArcFace + enrolamiento/desambiguación), ingestión Meta (webhook-gateway, meta-handler, vault-worker), chatbot-gateway (LLM + memoria pgvector), output-service y media-gateway (entrega de medios por URL firmada)
 deploy/                         Despliegue (ADR-0014): k8s/ (kustomize EKS) + localstack/ (init dev)
 docker-compose.yml              Dev local: postgres+pgvector, redis, localstack (SQS/SNS), servicios
 docs/
@@ -75,7 +77,8 @@ docs/
 │                                   0007 esquema/retención/auditoría · 0008 bóveda Vault/identidad
 │                                   0009 auth Auth0 · 0010 back office · 0011 contrato de eventos
 │                                   0012 broker AWS SQS/SNS · 0013 ArcFace 512-d + scoring solo-rostro
-│                                   0014 contenedores OCI + despliegue EKS/AWS
+│                                   0014 contenedores OCI + despliegue EKS/AWS · 0015 memoria conversación pgvector
+│                                   0016 enrolamiento biométrico + desambiguación · 0017 media delivery gateway
 ├── 01-requirements/
 │   └── flujo-central.md        PRD: reporte→match→confirmación→notificación (Gate 0)
 ├── 02-design/
@@ -96,14 +99,18 @@ docs/
     └── c4-component-matching.md  Diagrama C4 de Componentes (motor de matching)
 ```
 
+> Nota AI-DLC: ADR-0015/0016/0017 actúan en la frontera **02-design / 03-implementation** — cierran
+> pendientes de diseño (conversación multi-turno, enlace embedding↔entidad, entrega de medios) con su
+> implementación test-first asociada. Ver el detalle en [CHANGELOG.md](CHANGELOG.md).
+
 ## Estado
 
 | Fase | Gate | Estado |
 | :---- | :---- | :---- |
 | 00 · Project | — | ✅ Charter, glosario, clasificación de datos |
 | 01 · Requirements | Gate 0 | ✅ PRD del flujo central con escenarios de abuso y OWASP |
-| 02 · Design | Gate 1 | ✅ C4, threat model STRIDE/DREAD, **ADR-0001…0013** y contratos OpenAPI/AsyncAPI (deuda documentada) |
-| 03 · Implementation | Gate 2 | 🚧 Flujo central E2E: `webhook-gateway` (**15**), `meta-handler` (**11**), `vault-worker` (**8**), `chatbot-gateway` (**12**), `output-service` (**5**), `core-backend` (reportes+estados+auditoría SHA-256, **16**) + `matching-worker` (**32**). **99 tests en verde**; afinado con infra real pendiente |
+| 02 · Design | Gate 1 | ✅ C4, threat model STRIDE/DREAD, **ADR-0001…0017** y contratos OpenAPI/AsyncAPI (deuda documentada) |
+| 03 · Implementation | Gate 2 | 🚧 Flujo central E2E: `webhook-gateway` (**15**), `meta-handler` (**13**), `vault-worker` (**8**), `chatbot-gateway` (LLM + memoria pgvector, **33**), `output-service` (**10**), `media-gateway` (URL firmada, **28**), `core-backend` (reportes+estados+auditoría SHA-256, **21**) + `matching-worker` (ArcFace + enrolamiento/desambiguación, **42**). **170 tests en verde**; afinado con infra real pendiente |
 | 05 · Deployment | Gate 4 | 🚧 Apps **container-ready**: Dockerfiles, `docker-compose` (dev) y `deploy/k8s` para EKS (IRSA, ALB+HPA, KEDA, GPU) — ADR-0014. CI/CD e IaC pendientes |
 | 04 · Testing / 06 · Monitoring | Gates 3, 5 | ⬜ Pendiente (estructura creada) |
 

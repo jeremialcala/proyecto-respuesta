@@ -12,6 +12,37 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
 
 ### Added
 
+- **ADR-0017 — Media Delivery Gateway** (`docs/00-project/adr/0017-media-delivery-gateway.md`) y
+  **`apps/media-gateway` nuevo**: único endpoint **público de salida de medios** (espejo del
+  webhook-gateway). Entrega binarios cifrados de la bóveda (ADR-0005/0008) por **URL firmada que Meta
+  descarga** (`GET /m/{token}`), sin subirlos a la Graph API. Token **opaco, HMAC (KMS/Vault),
+  TTL corto, uso limitado y revocable**, con *ledger* en Postgres (`sa-east-1`) como autoridad de
+  estado. **Dos planos**: público endurecido tras ALB+WAF y plano interno (mTLS/IRSA) para emitir y
+  revocar concesiones (`POST /grants`, `DELETE /grants/{token_id}`) que llaman output-service,
+  chatbot-gateway y back office. Descifrado al vuelo (AES-GCM, *encryption context* por sujeto), solo
+  `scan=clean`; **allowlist por audiencia** (`meta_fetchers`/`authenticated_session`/`open_token`),
+  auditoría encadenada (ADR-0007) y rate-limit por token/IP/global (Redis). Container-ready
+  (Dockerfile, plano público/interno). **28 tests en verde** (API, delivery, grant service, policy,
+  token signer).
+- **ADR-0016 — Enrolamiento biométrico y desambiguación multi-rostro**
+  (`docs/00-project/adr/0016-enrolamiento-biometrico-desambiguacion.md`): nuevo caso de uso
+  **`EnrollmentService`** en el matching-worker que consume `report.ingested`, resuelve `media_ref`,
+  ejecuta `FaceMapper.map_image` y ramifica por nº de rostros — **0** → `enrollment.failed`; **1** →
+  `entity.enrolled` (enrola y refresca el índice ANN); **≥2** → **no enrola**, recorta cada rostro,
+  crea un `PendingEnrollment` (TTL) y publica `face.disambiguation.requested`. La desambiguación viaja
+  como evento al chatbot (human-in-the-loop, sin resolución automática); al resolver se enrola
+  **solo** el rostro elegido y se **purgan** los terceros no consentidos (minimización, A04). `FaceMap`
+  extendido con `bbox` + `det_score`; puertos nuevos `MediaGateway` y `PendingEnrollmentStore`;
+  idempotencia por `disambiguation_id` y `add_reference` upsert (ADR-0012).
+- **ADR-0015 — Memoria de conversación del chatbot (Postgres+pgvector)**
+  (`docs/00-project/adr/0015-memoria-conversacion-pgvector.md`): la Pasarela de Chatbot pasa de
+  **sin estado** a **estado por contacto**. Identidad estable no reversible
+  (`conversation_key = sha256(bot_id|channel|contact_ref)`), `SessionProfile` con borrador de reporte
+  acumulado (`report.received` se emite una vez, al completarse el núcleo a lo largo de la conversación)
+  y **memoria con recuperación semántica** (turnos embebidos con `nomic-embed-text` 768-d en pgvector;
+  contexto = resumen del perfil + ventana reciente + top-k por similitud coseno) para acotar tokens y
+  latencia sobre la RTX 3090 (ADR-0001).
+
 - **ADR-0014 + artefactos de despliegue** (`docs/00-project/adr/0014-contenedores-despliegue-eks.md`,
   `deploy/`): todas las apps **container-ready**. `Dockerfile` no-root por servicio (gateway
   python-slim; matching base CUDA para GPU); **`docker-compose.yml`** con Postgres+pgvector, Redis y
@@ -32,6 +63,21 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
 
 ### Changed
 
+- **`apps/chatbot-gateway` con memoria de conversación** (ADR-0015): `PgConversationStore`
+  (Postgres+pgvector) y `MemoryConversationStore` para tests; dominio `conversation` (SessionProfile,
+  acumulación del borrador de reporte) y `disambiguation` (render de miniaturas numeradas y resolución
+  por `selected_index`/`none_of_these`). El chatbot reenvía `face.disambiguation.requested` al
+  reportante y devuelve `face.disambiguation.resolved` (ADR-0016). **33 tests en verde**.
+- **`apps/matching-worker` con enrolamiento** (ADR-0016): `EnrollmentService`,
+  `PgPendingEnrollmentStore` y recorte de rostros en el adaptador de visión; `FaceMap` extendido con
+  `bbox`/`det_score`. **42 tests en verde**.
+- **`apps/output-service` entrega medios por URL firmada** (ADR-0016/0017): dominio `face_options`
+  (opciones interactivas de selección de rostro), cliente HTTP de concesiones
+  (`http_media_grant_client`) contra el media-gateway y envío por Graph API eligiendo texto/plantilla;
+  el medio se sirve como `link` firmado, no se sube a Meta. **10 tests en verde**.
+- **`apps/meta-handler` normaliza respuestas interactivas** (ADR-0016): el normalizador reparte las
+  selecciones del reportante (botones/listas de la desambiguación) hacia el flujo de conversación.
+  **13 tests en verde**.
 - **Residencia de datos: UE → São Paulo (`sa-east-1`)** propagada en cascada a charter,
   `data-classification.md`, `threat-model.md` (T4/T7), `architecture.md`, `openapi.yaml`,
   `asyncapi.yaml` y C4 de contenedores. GDPR pasa a ser listón interno (residencia bajo LGPD); el
