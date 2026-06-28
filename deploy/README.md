@@ -21,7 +21,8 @@ Dependencias gestionadas que se emulan en local:
   nomic-embed-text). El chatbot apunta a `OLLAMA_URL=http://llm:11434` (o `host.docker.internal`).
 
 **Perfiles:** `chat` (chatbot-gateway), `gpu` (matching-worker, requiere NVIDIA Container Toolkit),
-`llm` (Ollama empaquetado). Sin perfiles, esos tres no arrancan.
+`llm` (Ollama empaquetado), `poc` (inference-worker en CPU para el dry-run del PoC ADR-0019 —
+ver [`poc-vastai/`](poc-vastai/)). Sin perfiles, esos servicios no arrancan.
 
 **Endpoints de boto3:** `AWS_ENDPOINT_URL=http://localstack:4566` (SQS/SNS/KMS) y, para los servicios
 de bóveda (`vault-worker`, `matching-worker`), `AWS_ENDPOINT_URL_S3=http://minio:9000` (S3 → MinIO).

@@ -16,7 +16,7 @@ from .adapters.arcface_facemapper import ArcFaceMapper
 from .adapters.sqs_consumer import SqsConsumer
 from .adapters.sqs_sns_event_bus import SnsEventBus
 from .application.inference_service import InferenceService
-from .config import InferenceConfig
+from .config import ArcFaceParams, InferenceConfig
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def main() -> None:
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
     cfg = InferenceConfig.from_env()
-    mapper = ArcFaceMapper(cfg.arcface_model_root)
+    mapper = ArcFaceMapper(cfg.arcface_model_root, ArcFaceParams(use_gpu=cfg.arcface_use_gpu))
     bus = SnsEventBus({"face.embedded": cfg.face_embedded_topic_arn}, cfg.aws_region,
                       producer=cfg.producer)
     service = InferenceService(mapper, bus)

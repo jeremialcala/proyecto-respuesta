@@ -1,0 +1,19 @@
+# Override de compose para la CORRIDA LOCAL EN GPU del PoC (ADR-0019). Reusa el servicio `inference-worker`
+# (perfil `poc`) del docker-compose base pero lo pone en GPU: misma imagen `Dockerfile.inference`, mismo
+# bus (LocalStack/MinIO). Sustituye a la corrida en vast.ai cuando se mide en la GPU on-prem (RTX 3090).
+#
+# Uso (desde la raíz del repo):
+#   docker compose -f docker-compose.yml -f deploy/poc-vastai/compose.gpu.yml --profile poc up -d --build inference-worker
+#
+# Requiere NVIDIA Container Toolkit. Con esto el ArcFace corre en CUDA → mide throughput/latencia reales.
+services:
+  inference-worker:
+    environment:
+      ARCFACE_USE_GPU: "true"   # CUDAExecutionProvider + ctx_id=0 (vs CPU del dry-run)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: ["gpu"]

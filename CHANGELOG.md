@@ -12,6 +12,19 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
 
 ### Added
 
+- **PoC vast.ai (ADR-0019, decisión abierta) — kit de medición** en `deploy/poc-vastai/`: generador de
+  **caras sintéticas** sin PII (`gen_synthetic_faces.py`), **harness** de carga que publica
+  `face.extract.requested` y drena `face.embedded` midiendo **cold-start, throughput, latencia p50/p95/p99,
+  tasa de detección, timeouts y egress** (`harness.py`, contra LocalStack o AWS real), **runbook** Secure
+  Cloud Brasil (selección de host verificado, flujo sin-secretos, modelo de costo) y **plantilla de
+  resultados**. **Dry-run local** vía perfil `poc` del compose: servicio `inference-worker` (imagen
+  `Dockerfile.inference`) en CPU contra LocalStack/MinIO (`ARCFACE_USE_GPU=false`), con sus colas/topics
+  (`face-extract-requested`/`face-embedded`/`face-embedded-reply`) en el init idempotente. La ejecución
+  en GPU real queda del lado del operador (egress gated por validación legal). **Config de vast.ai** en
+  `deploy/poc-vastai/vast/` (interruptible, Brasil verificado, imagen privada ECR con **login de corta
+  vida**, `iam-inference-policy.json` de alcance mínimo, `aws-bootstrap.sh` del bus real,
+  `launch.sh`/`onstart.sh`/`teardown.sh`) y `prep_dataset.py` (FairFace/FFHQ reales o GAN sintético §6).
+
 - **ADR-0019 — Imagen de inferencia ArcFace portable + procesamiento efímero** (`proposed`,
   `docs/00-project/adr/0019-imagen-inferencia-arcface-tensorrt-vastai.md`): se realiza la **arquitectura
   portable** para burst GPU on-demand (vast.ai Secure Cloud / EKS / on-prem; destino = configuración).

@@ -113,6 +113,20 @@ for pair in "${SUBSCRIPTIONS[@]}"; do
   subscribe_queue_to_topic $pair
 done
 
+# --- PoC del plano de inferencia (ADR-0019) — perfil `poc` del compose ---
+# Request-reply por el bus: el worker in-region (o el harness) publica `face-extract-requested`; el
+# inference-worker consume la cola homónima y publica `face-embedded`; la cola `face-embedded-reply`
+# (suscrita, raw) la drena el requester casando por job_id. Recursos baratos e idempotentes (se crean
+# siempre; solo se usan con `--profile poc`).
+for q in face-extract-requested face-embedded-reply; do
+  create_queue_with_dlq "$q"
+done
+for t in face-extract-requested face-embedded; do
+  awslocal sns create-topic --name "$t" >/dev/null && echo "  topic ${t}"
+done
+subscribe_queue_to_topic face-extract-requested face-extract-requested   # → inference-worker
+subscribe_queue_to_topic face-embedded         face-embedded-reply        # → requester/harness
+
 # Buckets S3 de la bóveda (vault-worker). Idempotente: con persistencia ya existen tras el restore.
 for b in respuesta-media respuesta-quarantine; do
   if awslocal s3 ls "s3://${b}" >/dev/null 2>&1; then

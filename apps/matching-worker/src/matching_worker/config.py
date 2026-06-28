@@ -139,6 +139,7 @@ class InferenceConfig:
     extract_queue_url: str = ""                    # SQS: face.extract.requested
     face_embedded_topic_arn: str = ""              # SNS: face.embedded (fan-out a las colas de respuesta)
     arcface_model_root: str = "/models/insightface"
+    arcface_use_gpu: bool = True                    # False → CPUExecutionProvider (dry-run CPU del PoC, ADR-0019)
     max_messages: int = 10
     wait_time_seconds: int = 20
     producer: str = "inference-worker"
@@ -150,6 +151,7 @@ class InferenceConfig:
             extract_queue_url=os.getenv("SQS_EXTRACT_QUEUE_URL", ""),
             face_embedded_topic_arn=os.getenv("SNS_FACE_EMBEDDED_ARN", ""),
             arcface_model_root=os.getenv("ARCFACE_MODEL_ROOT", "/models/insightface"),
+            arcface_use_gpu=os.getenv("ARCFACE_USE_GPU", "true").lower() not in ("false", "0", "no"),
             max_messages=int(os.getenv("SQS_MAX_MESSAGES", "10")),
             wait_time_seconds=int(os.getenv("SQS_WAIT_SECONDS", "20")),
             producer=os.getenv("PRODUCER", "inference-worker"),

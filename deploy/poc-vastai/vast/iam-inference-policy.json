@@ -1,0 +1,24 @@
+{
+  "_comment": "IAM de ALCANCE MÍNIMO para el nodo de inferencia en vast.ai (ADR-0019 §4: sin secretos a Vault).",
+  "_comment2": "Solo consumir face-extract-requested y publicar face-embedded. SIN Vault/KMS/pgvector/S3/ECR en runtime.",
+  "_comment3": "Sustituir <ACCOUNT_ID>. Adjuntar a un usuario IAM dedicado o (recomendado) emitir credenciales STS de corta vida.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ConsumeExtractQueue",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes"
+      ],
+      "Resource": "arn:aws:sqs:sa-east-1:<ACCOUNT_ID>:face-extract-requested"
+    },
+    {
+      "Sid": "PublishEmbeddings",
+      "Effect": "Allow",
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:sa-east-1:<ACCOUNT_ID>:face-embedded"
+    }
+  ]
+}

@@ -266,6 +266,30 @@ services:
               count: 1
               capabilities: ["gpu"]
 
+  # Plano de INFERENCIA stateless (ADR-0019) — dry-run del PoC de vast.ai. Imagen distinta
+  # (`Dockerfile.inference`); aquí corre en CPU (ARCFACE_USE_GPU=false) solo para validar el harness y
+  # el round-trip por SQS/SNS, NO para números representativos de GPU. Perfil `poc`:
+  #   docker compose --profile poc up -d --build inference-worker
+  # Luego el harness host: deploy/poc-vastai/harness.py --endpoint http://localhost:4566 …
+  inference-worker:
+    build:
+      context: ./apps/matching-worker
+      dockerfile: Dockerfile.inference
+    profiles: ["poc"]
+    depends_on:
+      localstack: {condition: service_healthy}
+    environment:
+      AWS_REGION: sa-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      SQS_EXTRACT_QUEUE_URL: http://localstack:4566/000000000000/face-extract-requested
+      SNS_FACE_EMBEDDED_ARN: arn:aws:sns:sa-east-1:000000000000:face-embedded
+      ARCFACE_MODEL_ROOT: /models/insightface
+      ARCFACE_USE_GPU: "false"   # dry-run en CPU (wiring); en GPU real el destino es vast.ai/EKS/on-prem
+    volumes:
+      - "insightface-models:/models"   # cache buffalo_l (~300 MB) para no re-descargar entre arranques
+
 volumes:
   pgdata:
   minio-data:   # bóveda S3 persistente (medios cifrados) — sobrevive a reinicios

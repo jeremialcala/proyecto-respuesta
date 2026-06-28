@@ -10,7 +10,9 @@
 #   aquí). Distribución del engine (horneado en la imagen vs volumen de solo-lectura versionado por
 #   model=arcface/version=iresnet100) pendiente. Mientras tanto, InsightFace/ONNX-GPU sirve de base
 #   portable (la misma que el worker), seleccionable sin cambiar el código del servicio.
-ARG TRT_BASE=nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04
+# Base CUDA 12.4 + cuDNN 9: el onnxruntime-gpu actual (>=1.19) requiere cuDNN 9; una base cudnn8 hace
+# que el CUDAExecutionProvider NO cargue (cae a CPU en silencio). Driver del host >=550 lo soporta.
+ARG TRT_BASE=nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 FROM ${TRT_BASE} AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -22,7 +24,12 @@ COPY pyproject.toml ./
 COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip3 install --upgrade pip "setuptools>=68" wheel \
-    && pip3 install --timeout=120 --retries=10 .
+    && pip3 install --timeout=120 --retries=10 . \
+    # insightface declara `onnxruntime` (CPU) y pisa a `onnxruntime-gpu` (mismo paquete) → el provider
+    # CUDA desaparece y la inferencia cae a CPU. Dejamos SOLO onnxruntime-gpu y verificamos en build.
+    && pip3 uninstall -y onnxruntime onnxruntime-gpu \
+    && pip3 install --timeout=120 --retries=10 "onnxruntime-gpu>=1.19,<1.24" \
+    && python3 -c "import onnxruntime as o; p=o.get_available_providers(); print('ORT providers:', p); assert 'CUDAExecutionProvider' in p, p"
 ENV PYTHONPATH=/app/src
 # Modelos en un directorio escribible por el no-root (o un volumen de solo-lectura con el engine horneado).
 RUN mkdir -p /models && chown -R 10001:10001 /models

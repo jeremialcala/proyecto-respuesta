@@ -1,0 +1,3 @@
+# Dependencias del kit de PoC (ADR-0019). Tooling operativo del lado del operador (no del runtime).
+boto3>=1.34       # publica face.extract.requested / drena face.embedded (SNS/SQS)
+pillow>=10.0      # generador de caras sintéticas (sin PII)

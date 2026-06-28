@@ -70,7 +70,7 @@ Para que la misma carga corra indistintamente en EKS sa-east-1, on-prem o vast.a
 
 ## Decisiones abiertas
 
-- `<TODO>` **PoC en vast.ai Secure Cloud (Brasil) con datos sintéticos**: medir cold-start real, throughput del pipeline, latencia/costo de egress e ingress, y tasa de interrupción.
+- `<TODO>` **PoC en vast.ai Secure Cloud (Brasil) con datos sintéticos**: medir cold-start real, throughput del pipeline, latencia/costo de egress e ingress, y tasa de interrupción. **Kit listo** en `deploy/poc-vastai/` (generador sintético + harness de medición + runbook + plantilla de resultados, con dry-run local del `inference-worker` por el perfil `poc` del compose); falta **ejecutarlo en GPU real**.
 - `<TODO>` **Validación legal** de la postura de residencia para procesamiento efímero fuera de São Paulo (base legal + actualización de DPA/sub-procesadores).
 - `<TODO>` Distribución del engine TensorRT: horneado en la imagen vs volumen/registro de artefactos versionado (`model=arcface`, `version=iresnet100` — coherente con [ADR-0007]/[ADR-0013]).
 - `<TODO>` Mecanismo de **disparo del burst** (KEDA por profundidad de cola → aprovisionar instancias vast.ai vía API) y orquestación del ciclo de vida (alta, salud, baja, destrucción de datos).
