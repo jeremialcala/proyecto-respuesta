@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional
@@ -96,7 +97,8 @@ class EnrollmentService:
         }
         payload.update(_reporter_fields(reporter))   # identidad para avisar al reportante (ADR-0016)
         self._bus.publish("entity.enrolled", payload)
-        log.info("✓ enrolado entity_id=%s (source=%s)", entity_id, source)
+        log.info("✓ enrolado entity_id=%s det=%.2f size=%dpx dim=%d (source=%s) → entity.enrolled",
+                 entity_id, face.det_score, face.quality.size_px, len(face.embedding), source)
 
     def _fail(self, entity_id: Optional[str], report_id: Optional[str], reason: str,
               reporter: Optional[dict] = None) -> None:
@@ -148,14 +150,28 @@ class EnrollmentService:
                         envelope.get("event_id"))
             return
 
+        log.info("▶ procesando faces report.ingested entity_id=%s report_id=%s media_ref=%s",
+                 entity_id, report_id, media_ref)
+        t0 = time.monotonic()
         image = self._media.fetch(media_ref)
-        faces = [f for f in self._fm.map_image(image) if self._presentable(f)]
+        log.info("  ↳ foto obtenida de la bóveda: %d KB", round(len(image) / 1024))
+
+        t_map = time.monotonic()
+        detected = self._fm.map_image(image)
+        faces = [f for f in detected if self._presentable(f)]
+        map_ms = (time.monotonic() - t_map) * 1000
+        detalle = ", ".join(f"det={f.det_score:.2f}/{f.quality.size_px}px" for f in detected) or "—"
+        log.info("  ↳ detección: %d rostro(s), %d presentable(s) en %.0f ms [%s]",
+                 len(detected), len(faces), map_ms, detalle)
 
         if not faces:
+            log.info("  ↳ sin rostro presentable → enrollment.failed(no_face) (%.0f ms total)",
+                     (time.monotonic() - t0) * 1000)
             self._fail(entity_id, report_id, "no_face", reporter)
             return
         if len(faces) == 1:
             self._enroll(entity_id, faces[0], report_id, "report.ingested", reporter)
+            log.info("  ↳ enrolamiento completo en %.0f ms total", (time.monotonic() - t0) * 1000)
             return
 
         # ≥2 rostros: NO enrola; recorta, guarda efímero y pregunta al reportante.
