@@ -1,6 +1,6 @@
 # ADR-0016: Enrolamiento biométrico y desambiguación multi-rostro
 
-- **Estado:** accepted
+- **Estado:** accepted — punto 3 (purga incondicional de rostros no seleccionados) **enmendado por [ADR-0021](0021-reporte-derivado-otros-rostros.md)**; notificaciones del ciclo en **[ADR-0020](0020-notificaciones-enrolamiento-reportante.md)**
 - **Fecha:** 2026-06-27
 - **Decisores:** Jeremi
 - **Fase AI-DLC:** 02-design / 03-implementation
