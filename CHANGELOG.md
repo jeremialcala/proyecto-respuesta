@@ -12,6 +12,24 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
 
 ### Added
 
+- **IaC de provisioning — bootstrap Terraform + workflow CI** (`deploy/terraform/`,
+  `.github/workflows/terraform-bootstrap.yml`): primera capa de infraestructura como código para
+  AWS `sa-east-1` (ADR-0006). Modelo de identidad de **mínimo privilegio**: usuario `respuesta-ci`
+  que **solo puede `sts:AssumeRole`** (con `ExternalId`), y **dos roles separados** — `tf-bootstrap`
+  (IAM/KMS/EKS/VPC/ECR/SQS-SNS/S3/Secrets) y `tf-deploy` (build/push ECR + deploy EKS) — acotados por
+  un **permissions boundary** infranqueable (lock de región, no-escalación, protección de
+  CloudTrail/GuardDuty). **Backend de state remoto** (S3 versionado + SSE-KMS + TLS-only, lock en
+  DynamoDB). Workflow disparado por PR/push sobre `deploy/terraform/**` (plan en PR, apply en `main`).
+  Trade-off documentado: access keys de larga vida (rotar ≤90 días) con ruta de migración a **GitHub
+  OIDC** sin cambiar roles/boundary/trust.
+- **Suite de red teaming del `chatbot-gateway`** (`apps/chatbot-gateway/tests/security/`,
+  `docs/redteam-resultado.md`): manual de pruebas de seguridad WhatsApp ejecutado contra el bot real
+  (dev local, Ollama `gemma3:27b`) con las **respuestas literales del LLM** adjuntas. 9 categorías ×
+  45 payloads (jailbreak, scams, ingeniería social, alucinaciones, role-confusion, inyección, PII,
+  consistencia): **96.9 % global (218/225)**. Defensa en 3 capas (riel de entrada/salida heurístico
+  ADR-0002 + system prompt). Hallazgo principal **PII-01** (severidad media): el bot acusa recibo de
+  PII sensible sin advertir y el mensaje se **persiste en la memoria pgvector** → acción propuesta:
+  detector de PII en `screen_input` que redacta y excluye de la persistencia.
 - **PoC vast.ai (ADR-0019, decisión abierta) — kit de medición** en `deploy/poc-vastai/`: generador de
   **caras sintéticas** sin PII (`gen_synthetic_faces.py`), **harness** de carga que publica
   `face.extract.requested` y drena `face.embedded` midiendo **cold-start, throughput, latencia p50/p95/p99,

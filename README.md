@@ -36,8 +36,10 @@ matching** (worker, **ArcFace/IResNet100 512-d**), sobre un backend que orquesta
 federación. Mensajería asíncrona en **AWS SQS/SNS**; secretos y cifrado por usuario en **HashiCorp
 Vault**. Hosting bajo el **Modelo A** (operador humanitario internacional) en **AWS São Paulo
 `sa-east-1`**, con GPU on-prem (RTX 3090) para el MVP. La entrega de medios cifrados se hace por
-**URL firmada** vía un **media-gateway** dedicado (ADR-0017), única superficie pública de salida. Ver
-los diagramas C4:
+**URL firmada** vía un **media-gateway** dedicado (ADR-0017), única superficie pública de salida. El
+plano GPU de **FaceMatch se desacopla del LLM** (pools dedicados + anti-afinidad, ADR-0018) y la
+inferencia ArcFace puede ejecutarse como **plano stateless portable** para burst on-demand
+(vast.ai/EKS/on-prem, solo-vector 512-d, sin DB/Vault/secretos, ADR-0019). Ver los diagramas C4:
 
 - [C4 — Contexto](docs/architecture/c4-context.md)
 - [C4 — Contenedores](docs/architecture/c4-container.md)
@@ -64,8 +66,8 @@ documentos:
 .ai-dlc/
 ├── gates/                      Checklists Gate 0 (✅) y Gate 1 (✅ con deuda)
 └── templates/                  Plantillas reutilizables: prd, threat-model, adr
-apps/                           Servicios MVP: core-backend (API/estados/auditoría), matching-worker (ArcFace + enrolamiento/desambiguación), ingestión Meta (webhook-gateway, meta-handler, vault-worker), chatbot-gateway (LLM + memoria pgvector), output-service y media-gateway (entrega de medios por URL firmada)
-deploy/                         Despliegue (ADR-0014): k8s/ (kustomize EKS) + localstack/ (init dev)
+apps/                           Servicios MVP: core-backend (API/estados/auditoría), matching-worker (ArcFace + enrolamiento/desambiguación + plano de inferencia portable), ingestión Meta (webhook-gateway, meta-handler, vault-worker), chatbot-gateway (LLM + memoria pgvector + red teaming), output-service y media-gateway (entrega de medios por URL firmada)
+deploy/                         Despliegue: k8s/ (kustomize EKS, ADR-0014, pools GPU dedicados ADR-0018, inference-worker ADR-0019) + localstack/ (init dev) + terraform/ (bootstrap CI/IaC sa-east-1) + poc-vastai/ (kit de medición burst GPU)
 docker-compose.yml              Dev local: postgres+pgvector, redis, localstack (SQS/SNS/KMS), MinIO (bóveda S3 persistente), Ollama y servicios (perfiles: chat, gpu, llm)
 docs/
 ├── 00-project/
@@ -79,6 +81,7 @@ docs/
 │                                  0012 broker AWS SQS/SNS · 0013 ArcFace 512-d + scoring solo-rostro
 │                                  0014 contenedores OCI + despliegue EKS/AWS · 0015 memoria conversación pgvector
 │                                  0016 enrolamiento biométrico + desambiguación · 0017 media delivery gateway
+│                                  0018 desacople GPU LLM↔FaceMatch · 0019 imagen inferencia ArcFace portable (vast.ai)
 ├── 01-requirements/
 │   └── flujo-central.md        PRD: reporte→match→confirmación→notificación (Gate 0)
 ├── 02-design/
@@ -101,7 +104,9 @@ docs/
 
 > Nota AI-DLC: ADR-0015/0016/0017 actúan en la frontera **02-design / 03-implementation** — cierran
 > pendientes de diseño (conversación multi-turno, enlace embedding↔entidad, entrega de medios) con su
-> implementación test-first asociada. Ver el detalle en [CHANGELOG.md](CHANGELOG.md).
+> implementación test-first asociada. ADR-0018/0019 atacan el plano GPU (desacople LLM↔FaceMatch e
+> inferencia portable para burst on-demand), y la capa **05-deployment** arranca con IaC Terraform +
+> CI (`deploy/terraform/`). Ver el detalle en [CHANGELOG.md](CHANGELOG.md).
 
 ## Estado
 
@@ -109,10 +114,11 @@ docs/
 | :---- | :---- | :---- |
 | 00 · Project | — | ✅ Charter, glosario, clasificación de datos |
 | 01 · Requirements | Gate 0 | ✅ PRD del flujo central con escenarios de abuso y OWASP |
-| 02 · Design | Gate 1 | ✅ C4, threat model STRIDE/DREAD, **ADR-0001…0017** y contratos OpenAPI/AsyncAPI (deuda documentada) |
+| 02 · Design | Gate 1 | ✅ C4, threat model STRIDE/DREAD, **ADR-0001…0019** y contratos OpenAPI/AsyncAPI (deuda documentada) |
 | 03 · Implementation | Gate 2 | 🚧 Flujo central E2E: `webhook-gateway` (**14**), `meta-handler` (**13**), `vault-worker` (**8**), `chatbot-gateway` (LLM + memoria pgvector, **33**), `output-service` (texto/HSM + imagen+botones, **10**), `media-gateway` (URL firmada, **28**), `core-backend` (reportes+estados+auditoría SHA-256, **21**) + `matching-worker` (ArcFace + enrolamiento/desambiguación/revocación + idempotencia + extractor local/remoto, **59**). **186 tests en verde**; afinado con infra real pendiente |
-| 05 · Deployment | Gate 4 | 🚧 Apps **container-ready**: Dockerfiles, `docker-compose` (dev) y `deploy/k8s` para EKS (IRSA, ALB+HPA, KEDA, GPU) — ADR-0014. CI/CD e IaC pendientes |
-| 04 · Testing / 06 · Monitoring | Gates 3, 5 | ⬜ Pendiente (estructura creada) |
+| 05 · Deployment | Gate 4 | 🚧 Apps **container-ready**: Dockerfiles, `docker-compose` (dev) y `deploy/k8s` para EKS (IRSA, ALB+HPA, KEDA, pools GPU dedicados — ADR-0014/0018). **IaC iniciada**: bootstrap Terraform + workflow CI (`sa-east-1`, roles/ExternalId/boundary/state). PoC de burst GPU (vast.ai, ADR-0019). CD a EKS pendiente |
+| 04 · Testing | Gate 3 | 🚧 Red teaming del `chatbot-gateway` ejecutado contra el bot real: **96.9 % (218/225)**, hallazgo `PII-01` (media). Plan de pruebas formal pendiente |
+| 06 · Monitoring | Gate 5 | ⬜ Pendiente (estructura creada) |
 
 Los cambios se registran en [CHANGELOG.md](CHANGELOG.md) (formato Keep a Changelog 1.1.0 +
 Versionado Semántico). Versión actual: **0.1.0**.
