@@ -145,6 +145,9 @@ deploy/poc-vastai/results-*.json
 deploy/poc-vastai/vast/env.vast
 deploy/poc-vastai/vast/env.vast.local
 
+# Suite de red-team: salida regenerada por corrida (la evidencia baseline vive en docs/).
+apps/chatbot-gateway/tests/security/redteam-results.json
+
 # Terraform
 **/.terraform/*
 *.tfstate

@@ -230,6 +230,11 @@ services:
       SQS_MEDIA_STORED_URL: http://localstack:4566/000000000000/media-stored-intake
       SNS_REPORT_INGESTED_ARN: arn:aws:sns:sa-east-1:000000000000:report-ingested
       SNS_STATE_CHANGED_ARN: arn:aws:sns:sa-east-1:000000000000:state-changed
+    # Reusa la imagen de core-backend (trae un HEALTHCHECK HTTP /healthz para el API uvicorn), pero aquí
+    # corre como worker de cola SIN servidor HTTP → el healthcheck heredado siempre falla. Se desactiva:
+    # la salud real es "consume sus colas" (visible en logs y DLQ por redrive).
+    healthcheck:
+      disable: true
 
   matching-worker:
     build: ./apps/matching-worker
