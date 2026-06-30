@@ -11,7 +11,7 @@ metadata:
     alb.ingress.kubernetes.io/ssl-redirect: '443'
 spec:
   rules:
-    - host: media.respuesta.example   # coincide con PUBLIC_BASE_URL
+    - host: media.higerotech.com   # coincide con PUBLIC_BASE_URL
       http:
         paths:
           - path: /m

@@ -14,10 +14,15 @@ _DDL = """
 CREATE TABLE IF NOT EXISTS reports (
   report_id text PRIMARY KEY, entity_id text NOT NULL,
   intention text NOT NULL, subject_name text NOT NULL,
-  id_type text NOT NULL, id_number text NOT NULL,
+  -- Documento OPCIONAL: la identidad del sistema es biométrica, no la cédula (ADR-0020). Quien reporta
+  -- a un tercero rara vez tiene su documento; exigirlo rechazaba reportes válidos.
+  id_type text, id_number text,
   attributes jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+-- Idempotente: alinea tablas YA creadas con NOT NULL al nuevo esquema (CREATE IF NOT EXISTS no las altera).
+ALTER TABLE reports ALTER COLUMN id_type DROP NOT NULL;
+ALTER TABLE reports ALTER COLUMN id_number DROP NOT NULL;
 CREATE TABLE IF NOT EXISTS entities (
   entity_id text PRIMARY KEY, state text NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now()

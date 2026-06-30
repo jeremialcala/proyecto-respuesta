@@ -33,6 +33,8 @@ _CORDIAL_PREFIX = "Entiendo que es un momento difícil. "
 _REPORT_COMPLETE = ("✅ ¡Listo! Tu reporte quedó completo y registrado, incluida la foto que enviaste. "
                     "Gracias por la información. Te avisaremos ante cualquier coincidencia.")
 _NO_ESPECIFICADO = "no especificado"
+# Confirmación determinística que SOLO se añade cuando el reporte se emite de verdad (no la dice el LLM).
+_REPORT_REGISTERED = "\n\n📝 Tu reporte quedó registrado; te avisaremos al validarlo."
 # Tras varias fotos inservibles seguidas, se deriva a un coordinador humano (ADR-0020 RF-19 / AB-N1).
 _COORDINATOR_HANDOFF = ("He intentado registrar la foto varias veces sin éxito. Voy a derivar tu caso "
                         "a un coordinador para que te ayude personalmente. Gracias por tu paciencia.")
@@ -151,16 +153,28 @@ class ChatbotService:
         if screen.category is InputCategory.ABUSE:
             reply_text = _CORDIAL_PREFIX + reply_text   # tono cordial ante insultos (ADR-0002)
 
+        # --- multi-reporte: si ya se emitió un reporte y el LLM detecta un sujeto NUEVO, se reabre
+        # un reporte limpio para este contacto (ADR-0020). Refinar el nombre de uno aún no emitido NO
+        # resetea (la condición exige report_emitted). ---
+        base = ctx.profile
+        if draft is not None and base.report_emitted and base.is_new_subject(draft.subject_name):
+            base = base.reset_report()
+        profile = _accumulate(base, draft)
+
+        # --- control de reportes sobre TODA la conversación: decidir la emisión ANTES de responder,
+        # para que la confirmación "registrado" refleje el resultado real (no la afirme el LLM). ---
+        outcome = Outcome.REPLIED
+        will_emit = profile.report_complete and not profile.report_emitted
+        if will_emit:
+            reply_text += _REPORT_REGISTERED
+
         self._publish_reply(bot_id, channel, contact_ref, event_id, reply_text)
 
-        # --- persistir turnos y acumular el borrador en el perfil ---
+        # --- persistir turnos ---
         self._convos.append_turn(key, Turn.now("user", user_text), self._embed.embed(user_text))
         self._convos.append_turn(key, Turn.now("assistant", reply_text), self._embed.embed(reply_text))
-        profile = _accumulate(ctx.profile, draft)
 
-        # --- control de reportes sobre TODA la conversación, no sobre un turno ---
-        outcome = Outcome.REPLIED
-        if profile.report_complete and not profile.report_emitted:
+        if will_emit:
             self._publish_report(bot_id, channel, contact_ref, event_id, profile)
             profile = replace(profile, report_emitted=True)
             outcome = Outcome.REPLIED_WITH_REPORT
@@ -177,8 +191,9 @@ class ChatbotService:
             return HandleResult(Outcome.REPLIED)   # sin identidad del reportante no podemos avisar
         key = conversation_key(bot_id, channel, contact_ref)
         ctx = self._load_context(key, "")
-        if ctx.profile.completion_notified:
-            return HandleResult(Outcome.REPLIED)   # idempotente: una sola notificación de cierre (RF-23)
+        ref = p.get("report_id") or p.get("entity_id")   # dedup del cierre POR reporte (no permanente)
+        if ref and ref == ctx.profile.last_closed_ref:
+            return HandleResult(Outcome.REPLIED)   # idempotente ante redelivery del MISMO reporte (RF-23)
         event_id = envelope.get("event_id", "")
         media_ref = p.get("media_ref")
         if media_ref:   # cierre tipo imagen: la foto del reporte (URL firmada al enviar) + resumen como caption
@@ -189,7 +204,9 @@ class ChatbotService:
             self._publish_reply(bot_id, channel, contact_ref, event_id,
                                 _REPORT_COMPLETE + "\n\n" + _closing_summary(ctx.profile))
         self._publish_notification(p.get("entity_id"), channel, contact_ref, "closing", event_id)
-        self._convos.save_profile(key, replace(ctx.profile, completion_notified=True))
+        # Resetea el reporte en curso (libera report_emitted para el siguiente) y marca este cierre como
+        # ya notificado por su ref → el mismo contacto puede registrar otro reporte (ADR-0020, opción C).
+        self._convos.save_profile(key, ctx.profile.reset_report(last_closed_ref=ref))
         return HandleResult(Outcome.REPLIED)
 
     def on_enrollment_failed(self, envelope: dict) -> HandleResult:

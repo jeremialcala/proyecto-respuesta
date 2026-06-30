@@ -173,6 +173,80 @@ def test_report_accumulated_across_turns_and_emitted_once():
     assert r3.outcome is Outcome.REPLIED and len(pub.reports) == 1  # NO se republica
 
 
+def test_emission_appends_deterministic_registered_line():
+    """Al emitir, el reply lleva la confirmación determinística; sin emitir, no la lleva."""
+    draft = ReportDraft(intention="desaparecido", subject_name="Carmen", location="La Guaira",
+                        complete=True)
+    svc, pub, _ = _svc(FakeLlm(reply="Gracias.", draft=draft))
+    res = svc.handle(_env({"kind": "text", "text": "busco a Carmen vista en La Guaira"}))
+    assert res.outcome is Outcome.REPLIED_WITH_REPORT
+    assert "registrado" in pub.replies[0]["payload"]["jwe_body"].lower()
+
+    svc2, pub2, _ = _svc(FakeLlm(reply="¿Dónde la viste?", draft=None))
+    svc2.handle(_env({"kind": "text", "text": "hola"}))
+    assert "registrado" not in pub2.replies[0]["payload"]["jwe_body"].lower()
+
+
+def test_same_contact_can_file_multiple_reports_on_new_subject():
+    """Tras emitir el reporte A, un sujeto NUEVO reabre y publica un segundo report.received."""
+    store = MemoryConversationStore()
+    a = ("Listo.", ReportDraft(intention="desaparecido", subject_name="Wilfredo Medina",
+                               location="Caracas", complete=True))
+    b = ("Entendido.", ReportDraft(intention="desaparecido", subject_name="Anahys Garcia",
+                                   location="La Guaira", complete=True))
+    svc, pub, _ = _svc(FakeLlm(scripted=[a, b]), store=store)
+
+    r1 = svc.handle(_env({"kind": "text", "text": "busco a Wilfredo Medina en Caracas"}))
+    assert r1.outcome is Outcome.REPLIED_WITH_REPORT and len(pub.reports) == 1
+
+    r2 = svc.handle(_env({"kind": "text", "text": "ahora busco a Anahys Garcia en La Guaira"}))
+    assert r2.outcome is Outcome.REPLIED_WITH_REPORT and len(pub.reports) == 2
+    assert pub.reports[1]["payload"]["subject_name"] == "Anahys Garcia"
+    assert pub.reports[1]["payload"]["location"] == "La Guaira"
+
+
+def test_refining_same_subject_before_emit_does_not_reopen():
+    """Cambiar/ajustar el nombre de un reporte aún NO emitido no resetea: sigue el mismo reporte."""
+    store = MemoryConversationStore()
+    t1 = ("¿Dónde?", ReportDraft(intention="desaparecido", subject_name="Juan"))
+    t2 = ("Anotado.", ReportDraft(intention="desaparecido", subject_name="Juan Pérez",
+                                  location="Valencia", complete=True))
+    svc, pub, _ = _svc(FakeLlm(scripted=[t1, t2]), store=store)
+    svc.handle(_env({"kind": "text", "text": "busco a Juan"}))
+    r2 = svc.handle(_env({"kind": "text", "text": "se llama Juan Pérez, visto en Valencia"}))
+    assert r2.outcome is Outcome.REPLIED_WITH_REPORT and len(pub.reports) == 1
+    assert pub.reports[0]["payload"]["subject_name"] == "Juan Pérez"
+
+
+def test_closing_resets_report_so_next_one_can_be_filed():
+    """El cierre (entity.enrolled) libera report_emitted; un reporte posterior se vuelve a emitir."""
+    store = MemoryConversationStore()
+    a = ("Listo.", ReportDraft(intention="desaparecido", subject_name="Wilfredo", location="Caracas",
+                               complete=True))
+    b = ("Ok.", ReportDraft(intention="desaparecido", subject_name="Wilfredo", location="Caracas",
+                            complete=True))
+    svc, pub, _ = _svc(FakeLlm(scripted=[a, b]), store=store)
+    svc.handle(_env({"kind": "text", "text": "busco a Wilfredo en Caracas"}))
+    assert len(pub.reports) == 1
+    svc.on_entity_enrolled(_enrolled_env(media_ref="vault://m/foto1"))   # cierra reporte A
+    # mismo sujeto otra vez (p. ej. nueva foto/relato) → al reabrirse el ciclo se vuelve a emitir
+    r2 = svc.handle(_env({"kind": "text", "text": "tengo más datos de Wilfredo en Caracas"}))
+    assert r2.outcome is Outcome.REPLIED_WITH_REPORT and len(pub.reports) == 2
+
+
+def test_closing_dedup_by_report_id_allows_new_report_closing():
+    """Mismo report_id → un solo cierre; report_id distinto → segundo cierre permitido."""
+    store = MemoryConversationStore()
+    svc, pub, _ = _svc(FakeLlm(), store=store)
+    svc.on_entity_enrolled(_enrolled_env(media_ref="vault://m/a"))            # rep_1
+    svc.on_entity_enrolled(_enrolled_env(media_ref="vault://m/a"))            # rep_1 duplicado → no-op
+    assert len(pub.replies) == 1
+    env2 = _enrolled_env(media_ref="vault://m/b")
+    env2["payload"]["report_id"] = "rep_2"
+    svc.on_entity_enrolled(env2)                                             # rep_2 → nuevo cierre
+    assert len(pub.replies) == 2
+
+
 def test_context_passed_to_llm_carries_history_and_profile():
     """El segundo turno recibe el primer mensaje como historial reciente y el perfil acumulado."""
     store = MemoryConversationStore()

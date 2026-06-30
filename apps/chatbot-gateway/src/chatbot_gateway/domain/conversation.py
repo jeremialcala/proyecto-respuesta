@@ -62,7 +62,9 @@ class SessionProfile:
     notes: Optional[str] = None
     turn_count: int = 0
     report_emitted: bool = False             # evita re-publicar report.received en cada turno
-    completion_notified: bool = False        # evita repetir el aviso de "reporte completo" (ADR-0016)
+    # Dedup del cierre POR reporte (no booleano permanente): el ref del último reporte cerrado. Permite
+    # resetear el reporte tras cerrar (multi-reporte) sin re-disparar el cierre ante redelivery (ADR-0020).
+    last_closed_ref: Optional[str] = None
     photo_retry_count: int = 0               # fotos inservibles seguidas → límite y derivación (ADR-0020 RF-19)
     # Desambiguación multi-rostro en curso (ADR-0016): si está seteado, el próximo mensaje del
     # usuario se interpreta como la elección del rostro, no como conversación normal.
@@ -97,6 +99,27 @@ class SessionProfile:
             location=location or self.location,
             notes=notes or self.notes,
         )
+
+    def reset_report(self, *, last_closed_ref: Optional[str] = None) -> "SessionProfile":
+        """Limpia el reporte EN CURSO para empezar uno nuevo, conservando la identidad/memoria del
+        contacto (declared_name, turn_count) y la marca de dedup del último cierre. Habilita que un
+        mismo contacto registre varios reportes (ADR-0020)."""
+        return replace(
+            self,
+            intention=None, subject_name=None, id_type=None, id_number=None,
+            location=None, notes=None,
+            report_emitted=False, photo_retry_count=0,
+            pending_disambiguation_id=None, pending_faces_count=0,
+            last_closed_ref=last_closed_ref if last_closed_ref is not None else self.last_closed_ref,
+        )
+
+    def is_new_subject(self, name: Optional[str]) -> bool:
+        """¿`name` es un sujeto DISTINTO al del reporte actual? (comparación normalizada). Falso si
+        falta alguno de los dos nombres."""
+        if not name or not self.subject_name:
+            return False
+        norm = lambda s: " ".join(s.split()).casefold()   # colapsa espacios + case-insensitive
+        return norm(name) != norm(self.subject_name)
 
 
 @dataclass(frozen=True)

@@ -4,7 +4,7 @@ metadata:
   name: media-gateway-config
 data:
   AWS_REGION: "sa-east-1"
-  PUBLIC_BASE_URL: "https://media.respuesta.example"   # base de la URL firmada que descarga Meta
+  PUBLIC_BASE_URL: "https://media.higerotech.com"   # base de la URL firmada que descarga Meta
   REDIS_URL: "redis://respuesta-redis.xxxx.ng.0001.sae1.cache.amazonaws.com:6379/0"
   RATE_MAX_HITS: "60"
   RATE_WINDOW_SECONDS: "60"
