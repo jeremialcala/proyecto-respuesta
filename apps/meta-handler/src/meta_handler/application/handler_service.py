@@ -60,6 +60,10 @@ class HandlerService:
                 self._pub.publish_media(self._media_envelope(bot_id, msg))
                 self._log.record_action(event_id, "dispatch_media", "OK", msg.message_id)
                 media += 1
+                if (msg.text or "").strip():   # imagen con PIE DE FOTO: el caption ES el reporte → también como texto
+                    self._pub.publish_text(self._text_envelope(bot_id, msg))
+                    self._log.record_action(event_id, "dispatch_text", "OK", msg.message_id + ":caption")
+                    text += 1
             elif msg.type in (MessageType.TEXT, MessageType.LOCATION):
                 self._pub.publish_text(self._text_envelope(bot_id, msg))
                 self._log.record_action(event_id, "dispatch_text", "OK", msg.message_id)

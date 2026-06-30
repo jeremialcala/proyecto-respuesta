@@ -46,6 +46,7 @@ def _normalize_one(channel: Channel, msg: dict) -> NormalizedMessage:
         img = msg.get("image", {}) or {}
         media_id = img.get("id")
         mime = img.get("mime_type")
+        text = img.get("caption")   # el reportante suele escribir el reporte como PIE DE FOTO
     elif mtype is MessageType.LOCATION:
         lc = msg.get("location", {}) or {}
         if "latitude" in lc and "longitude" in lc:

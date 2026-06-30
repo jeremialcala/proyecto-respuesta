@@ -170,7 +170,7 @@ services:
       SNS_NOTIFICATION_SENT_ARN: arn:aws:sns:sa-east-1:000000000000:notification-sent   # auditoría ADR-0020 RF-22
       OLLAMA_URL: ${OLLAMA_URL:-http://llm:11434}   # servicio llm del compose (perfil llm). Host: http://host.docker.internal:11434
       LLM_MODEL: ${LLM_MODEL:-gemma3:27b}
-      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-120}      # s; sube si el modelo es grande / hay cola
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-300}      # s; gemma3:27b en frío tarda ~210s en cargar a VRAM
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
       # Memoria de conversación (ADR-0015): Postgres+pgvector + embeddings on-prem
       PGVECTOR_DSN: postgresql://respuesta:respuesta@postgres:5432/respuesta

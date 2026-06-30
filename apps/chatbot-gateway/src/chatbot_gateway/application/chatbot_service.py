@@ -185,8 +185,9 @@ class ChatbotService:
             self._publish_reply(bot_id, channel, contact_ref, event_id,
                                 _closing_summary(ctx.profile), kind="image", media_ref=media_ref,
                                 report_id=p.get("report_id"))
-        else:           # sin foto referenciable: cierre en texto (degradación)
-            self._publish_reply(bot_id, channel, contact_ref, event_id, _REPORT_COMPLETE)
+        else:           # sin foto referenciable: cierre en TEXTO con el mismo resumen (degradación, RF-17)
+            self._publish_reply(bot_id, channel, contact_ref, event_id,
+                                _REPORT_COMPLETE + "\n\n" + _closing_summary(ctx.profile))
         self._publish_notification(p.get("entity_id"), channel, contact_ref, "closing", event_id)
         self._convos.save_profile(key, replace(ctx.profile, completion_notified=True))
         return HandleResult(Outcome.REPLIED)

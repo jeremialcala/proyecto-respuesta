@@ -67,6 +67,25 @@ def test_image_dispatched_to_inbound_media_without_binary():
     assert "binary" not in env["payload"] and "image" not in env["payload"]
 
 
+def test_image_with_caption_dispatches_media_and_text():
+    """Imagen con pie de foto → inbound.media (foto) + inbound.text (el caption = el reporte)."""
+    svc, pub, _ = _svc()
+    res = svc.handle(_env([{"id": "wamid.2b", "from": "584120000000", "type": "image",
+                            "image": {"id": "media-50", "mime_type": "image/jpeg",
+                                      "caption": "El es Harry Gonzalez, visto en Playa Grande"}}]))
+    assert res.media == 1 and res.text == 1
+    assert pub.media[0]["payload"]["media_id"] == "media-50"
+    body = json.loads(pub.text[0]["payload"]["jwe_body"][4:-1])
+    assert body == {"kind": "text", "text": "El es Harry Gonzalez, visto en Playa Grande"}
+
+
+def test_image_without_caption_dispatches_only_media():
+    svc, pub, _ = _svc()
+    res = svc.handle(_env([{"id": "wamid.2d", "from": "x", "type": "image",
+                            "image": {"id": "m", "mime_type": "image/jpeg"}}]))
+    assert res.media == 1 and res.text == 0 and pub.text == []
+
+
 def test_location_goes_to_inbound_text_as_location():
     svc, pub, _ = _svc()
     svc.handle(_env([{"id": "wamid.3", "from": "x", "type": "location",

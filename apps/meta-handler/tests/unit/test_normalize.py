@@ -25,6 +25,16 @@ def test_image_message_carries_media_id_not_binary():
     assert m.text is None
 
 
+def test_image_caption_becomes_text():
+    """Imagen con pie de foto: el caption se conserva como texto (el reportante escribe ahí el reporte)."""
+    out = normalize(_wa([{"id": "wamid.2c", "from": "x", "type": "image",
+                          "image": {"id": "media-7", "mime_type": "image/jpeg",
+                                    "caption": "El es Harry, visto en Playa Grande"}}]))
+    m = out[0]
+    assert m.type is MessageType.IMAGE and m.media_id == "media-7"
+    assert m.text == "El es Harry, visto en Playa Grande"
+
+
 def test_location_message():
     out = normalize(_wa([{"id": "wamid.3", "from": "x", "type": "location",
                           "location": {"latitude": 10.5, "longitude": -66.9, "name": "Altamira"}}]))
