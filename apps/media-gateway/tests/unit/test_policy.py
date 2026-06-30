@@ -20,6 +20,12 @@ def test_report_photo_targets_back_office_session():
     assert pol.audience is Audience.AUTHENTICATED_SESSION
 
 
+def test_enrollment_closing_is_served_to_meta_fetchers():
+    # ADR-0020: la foto del cierre la descarga Meta al renderizar el image message → META_FETCHERS.
+    pol = policy_for(Purpose.ENROLLMENT_CLOSING)
+    assert pol.audience is Audience.META_FETCHERS
+
+
 def test_token_id_is_opaque_and_unique():
     a, b = new_token_id(), new_token_id()
     assert a != b

@@ -28,6 +28,9 @@ PURPOSE_POLICIES: dict[Purpose, GrantPolicy] = {
     Purpose.REPORT_PHOTO:        GrantPolicy(ttl_s=900, max_uses=10, audience=Audience.AUTHENTICATED_SESSION),
     Purpose.PROOF_OF_LIFE:       GrantPolicy(ttl_s=600, max_uses=3, audience=Audience.META_FETCHERS),
     Purpose.ATTACHMENT:          GrantPolicy(ttl_s=600, max_uses=3, audience=Audience.META_FETCHERS),
+    # Cierre de enrolamiento (ADR-0020): la foto del reporte la descarga Meta al renderizar el image
+    # message → misma audiencia/TTL que el recorte de desambiguación.
+    Purpose.ENROLLMENT_CLOSING:  GrantPolicy(ttl_s=600, max_uses=3, audience=Audience.META_FETCHERS),
 }
 
 

@@ -24,6 +24,7 @@ class Purpose(str, Enum):
     REPORT_PHOTO = "report_photo"                 # foto del desaparecido en el back office
     PROOF_OF_LIFE = "proof_of_life"               # prueba de vida (video)
     ATTACHMENT = "attachment"                     # cualquier adjunto genérico
+    ENROLLMENT_CLOSING = "enrollment_closing"     # foto del reporte en el cierre tipo imagen (ADR-0020)
 
 
 class ServeResult(str, Enum):

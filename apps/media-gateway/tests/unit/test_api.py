@@ -52,6 +52,19 @@ def test_issue_then_serve_end_to_end():
     assert got.headers["cache-control"] == "private, no-store"
 
 
+def test_issue_enrollment_closing_then_serve_end_to_end():
+    # ADR-0020: el cierre tipo imagen emite concesión purpose=enrollment_closing y la sirve a Meta.
+    internal, public = _apps()
+    resp = internal.post("/grants", json={"media_ref": MEDIA_REF, "content_type": "image/jpeg",
+                                          "purpose": "enrollment_closing"})
+    assert resp.status_code == 201
+    token = resp.json()["url"].rsplit("/m/", 1)[1]
+
+    got = public.get(f"/m/{token}", headers={"user-agent": "facebookexternalhit/1.1"})
+    assert got.status_code == 200
+    assert got.content == PLAINTEXT
+
+
 def test_serve_unknown_token_is_404():
     _internal, public = _apps()
     assert public.get("/m/does.123.notreal").status_code == 404
