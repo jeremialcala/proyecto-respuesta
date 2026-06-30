@@ -171,6 +171,8 @@ def test_single_face_enrolls_and_refreshes_index():
     assert enrolled["entity_id"] == "ent_1" and enrolled["source"] == "report.ingested"
     # la identidad del reportante viaja para el feedback "reporte completo" (ADR-0016)
     assert enrolled["contact_ref"] == "wa:rep" and enrolled["bot_id"] == "bot-1"
+    # la foto del reporte viaja para el cierre tipo imagen (ADR-0020)
+    assert enrolled["media_ref"] == "vault://m/1"
 
 
 def test_tiny_background_faces_are_filtered_before_counting():
@@ -209,6 +211,8 @@ def test_resolved_enrolls_selected_and_purges_all_crops():
     assert set(d["media"].deleted) == {"vault://crop/0", "vault://crop/1"}  # purga todos
     assert "dis_fixed" in d["pending"].resolved
     assert "entity.enrolled" in d["bus"].types()
+    # el cierre usa la foto original del reporte (ADR-0020), no el recorte ya purgado
+    assert d["bus"].payload("entity.enrolled")["media_ref"] == "vault://m/1"
 
 
 def test_none_of_these_fails_and_purges():

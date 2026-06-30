@@ -63,13 +63,16 @@ def build_default_app():
     from ..config import CoreConfig
     from ..adapters.pg_stores import PgStores
     from ..adapters.sns_publisher import SnsPublisher
+    from ..adapters.sqs_reply_publisher import SqsReplyPublisher
     from ..application.chained_audit import ChainedAudit
     cfg = CoreConfig.from_env()
     stores = PgStores(cfg.pgvector_dsn)
     pub = SnsPublisher({"report.ingested": cfg.report_ingested_topic_arn,
-                        "state.changed": cfg.state_changed_topic_arn}, cfg.aws_region)
+                        "state.changed": cfg.state_changed_topic_arn,
+                        "notification.sent": cfg.notification_sent_topic_arn}, cfg.aws_region)
+    reply_pub = SqsReplyPublisher(cfg.outbound_reply_queue_url, cfg.aws_region)  # acuse RF-16
     audit = ChainedAudit(stores)
-    return create_app(IntakeService(cfg, stores, stores, audit, pub),
+    return create_app(IntakeService(cfg, stores, stores, audit, pub, reply_pub=reply_pub),
                       StateService(cfg, stores, audit, pub))
 
 

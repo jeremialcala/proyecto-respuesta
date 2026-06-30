@@ -1,13 +1,15 @@
 """Validación del esquema dinámico del reporte (ADR-0007). Puro (stdlib).
 
-Núcleo **obligatorio**: nombre completo, tipo de identificación y número de identificación. El resto
-(foto, última ubicación, notas) es opcional y vive en `attributes` sin migración de esquema.
+Núcleo **obligatorio**: el nombre de la persona. El documento de identidad (tipo + número) es
+**opcional** —quien reporta a un tercero rara vez lo tiene y la identidad del sistema es biométrica
+(la cara, ADR-0016)—; foto, última ubicación y notas también viven en `attributes` sin migración de
+esquema. La "accionabilidad" (nombre + foto o ubicación) se exige en la capa conversacional (chatbot).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-MANDATORY = ("subject_name", "id_type", "id_number")
+MANDATORY = ("subject_name",)
 
 
 @dataclass(frozen=True)

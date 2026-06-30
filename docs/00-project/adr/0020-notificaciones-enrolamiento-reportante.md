@@ -1,9 +1,9 @@
 # ADR-0020: Notificaciones del ciclo de enrolamiento al reportante (acuse + cierre con imagen)
 
-- **Estado:** proposed
+- **Estado:** accepted
 - **Fecha:** 2026-06-29
 - **Decisores:** Jeremi
-- **Fase AI-DLC:** 02-design
+- **Fase AI-DLC:** 02-design → 03-implementation
 - **Controles OWASP afectados:** A01 (aislamiento por sujeto), A02 (firma del token de imagen), A04 (exposición de PII/biometría), A05 (borde público de medios), A09 (auditoría/observabilidad)
 - **Relacionado:** RF-16…RF-23 ([notificaciones-matching.md](../../01-requirements/notificaciones-matching.md)), [ADR-0011](0011-contrato-eventos.md) (sobre de eventos), [ADR-0012](0012-broker-aws-sqs-sns.md) (broker SQS/SNS), [ADR-0015](0015-memoria-conversacion-pgvector.md) (sesión del chatbot), [ADR-0016](0016-enrolamiento-biometrico-desambiguacion.md) (enrolamiento/desambiguación), [ADR-0017](0017-media-delivery-gateway.md) (entrega de medios por URL firmada). **Complementado por** [ADR-0021](0021-reporte-derivado-otros-rostros.md).
 
@@ -118,12 +118,37 @@ auditoría encadenada (ADR-0007/ADR-0011). Se **extiende** `NotificationSent` co
   evita tormenta de notificaciones (AB-N5); auditoría encadenada de cada `notification.sent` (A09).
   Los rostros de terceros en fotos de grupo **no** entran en este cierre (se gobiernan en ADR-0021).
 
+## Estado de implementación (2026-06-29)
+
+Implementado (fase 03) y validado con tests por servicio:
+- **Acuse (RF-16):** lo emite el **core-backend intake** al recibir la foto — `report.ingested` con
+  `media_ref`, **o `media.stored` antes de completar el reporte** (`IntakeService._ack_photo`,
+  idempotente **por `media_ref`**) — así el reportante siempre ve el resultado de la carga aunque el
+  reporte aún no cierre; publica `outbound.reply` (acuse) + `notification.sent`.
+- **Anti-alucinación (grounding):** el system prompt del LLM le prohíbe inventar un "registro" de
+  reportes o mostrar reportes guardados; ante "muéstrame el reporte"/"a quién reporté" responde solo con
+  lo capturado en **esta** conversación (perfil de sesión) o pide lo que falta.
+- **Cierre imagen+resumen (RF-17/18):** el `matching-worker` propaga `media_ref` en `entity.enrolled`;
+  el `chatbot-gateway` arma el **resumen desde el borrador de sesión** (ADR-0015) y publica
+  `outbound.reply` **kind=image**; el `output-service` pide la concesión al media-gateway al enviar y
+  manda el *image message* con caption. **Degradación:** si no hay plano de medios accesible (sin
+  media-gateway o falla la concesión), el `output-service` entrega el **resumen como texto** para que el
+  reportante siempre lo vea.
+- **Mejor-foto (RF-19):** `chatbot-gateway` cuenta reintentos (`photo_retry_count`) y deriva a
+  coordinador tras `MAX_PHOTO_RETRIES` (default 3).
+- **Ubicación:** campo nuevo de punta a punta (LLM → `ReportDraft`/`SessionProfile` → resumen; también
+  en `report.received`/`report.ingested`).
+- **Auditoría (RF-22):** `notification.sent` con `purpose ∈ {ack, closing, better_photo, disambiguation}`.
+- **Contratos:** `asyncapi.yaml` actualizado (`OutboundReply.kind/media`, `EntityEnrolled.media_ref`,
+  `NotificationSent.purpose/contact_ref`, `ReportIngested.location`).
+
 ## Pendiente
 
-- Texto/plantillas exactas de acuse, cierre, mejor-foto y desambiguación (UX-copy), por canal.
-- Límite de reintentos de "mejor foto" y derivación a coordinador (RF-19, AB-N1).
-- Fuente del resumen: borrador de sesión (ADR-0015) vs. consulta al core-backend por `report_id` —
-  elegir según disponibilidad y consistencia.
-- Confirmar si el acuse (RF-16) lo emite el intake al recibir o el plano de salida al ver
-  `report.ingested` (latencia vs. simplicidad).
-- Propagar los cambios de esquema a `asyncapi.yaml` y `openapi.yaml` (fase 02→03).
+- Texto/plantillas exactas (UX-copy) finas por canal; valor definitivo de `MAX_PHOTO_RETRIES`.
+- **Persistencia** de `notification.sent` en la auditoría encadenada: hoy se emite el evento al bus;
+  falta el consumidor que lo escriba en `audit_log` (o emitir desde el core con `ChainedAudit`).
+- Plantilla HSM específica de cierre fuera de la ventana de 24h (hoy degrada a la HSM genérica).
+- **Imagen real del cierre:** requiere el **plano público del media-gateway** alcanzable por Meta
+  (ADR-0017). No funciona desde localhost (Meta descarga el `link`); en dev/local el cierre llega como
+  **texto**. Para validar la imagen: levantar el media-gateway (interno+público) con una **clave HMAC en
+  KMS** y exponer el plano público (túnel/dominio); pendiente añadirlo al `docker-compose`.

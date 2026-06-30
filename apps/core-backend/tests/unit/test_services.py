@@ -53,6 +53,21 @@ def _wire_corr():
     return cfg, stores, pub, corr, intake
 
 
+class FakeReply:
+    def __init__(self):
+        self.replies = []
+
+    def publish_reply(self, env):
+        self.replies.append(env)
+
+
+def _wire_ack():
+    cfg = CoreConfig(producer="core-backend")
+    stores, pub, corr, reply = MemoryStores(), FakePub(), FakeCorrelation(), FakeReply()
+    intake = IntakeService(cfg, stores, stores, ChainedAudit(stores), pub, corr, reply_pub=reply)
+    return cfg, stores, pub, corr, reply, intake
+
+
 def _media_env(contact_ref="wa:5215555", media_ref="s3://respuesta-media/media/x/1", scan="clean"):
     return {"event_id": "evt-media", "event_type": "media.stored",
             "payload": {"contact_ref": contact_ref, "media_ref": media_ref,
@@ -86,11 +101,23 @@ def test_intake_accepts_and_emits_report_ingested():
 
 
 def test_intake_rejects_incomplete():
+    """Falta el nombre (único obligatorio; el documento es opcional) → rechazado."""
     cfg, stores, pub, intake, _ = _wire()
-    res = intake.handle({"event_id": "e", "payload": {"subject_name": "Juan", "source": "x"}})
+    res = intake.handle({"event_id": "e", "payload": {"id_type": "V", "id_number": "1", "source": "x"}})
     assert res.accepted is False
     assert all(t != "report.ingested" for t, _ in pub.events)
     assert stores.audit and stores.audit[-1].action == "report.rejected"
+
+
+def test_intake_accepts_without_document():
+    """Reporte con nombre y sin cédula → aceptado (la cédula es opcional, ADR-0016)."""
+    cfg, stores, pub, intake, _ = _wire()
+    res = intake.handle({"event_id": "e", "payload": {
+        "intention": "desaparecido", "subject_name": "Carmen Suárez",
+        "ultima_ubicacion": "La Guaira", "source": "chatbot:whatsapp"}})
+    assert res.accepted is True
+    _, report = stores.reports[res.report_id]
+    assert report.subject_name == "Carmen Suárez" and report.id_number is None
 
 
 def test_state_transition_allowed_emits_event_and_audits():
@@ -159,6 +186,49 @@ def test_non_clean_media_is_ignored():
     intake.on_media_stored(_media_env(contact_ref="wa:c5", scan="quarantined"))
     ingested = [e for t, e in pub.events if t == "report.ingested"]
     assert len(ingested) == 1                                   # no re-emite con media en cuarentena
+
+
+# --- acuse de recepción de foto al reportante (ADR-0020 RF-16) ---
+
+def test_ack_sent_when_report_has_photo():
+    cfg, stores, pub, corr, reply, intake = _wire_ack()
+    intake.handle(_report_env(contact_ref="wa:a1", media_ref="s3://b/m/a1"))
+    assert len(reply.replies) == 1
+    env = reply.replies[0]
+    assert env["event_type"] == "outbound.reply"
+    body = env["payload"]["jwe_body"]
+    assert "Juan Pérez" in body and "analizando" in body.lower()
+    # auditoría del acuse (RF-22)
+    acks = [e for t, e in pub.events if t == "notification.sent"]
+    assert len(acks) == 1 and acks[0]["payload"]["purpose"] == "ack"
+
+
+def test_ack_once_per_report_even_if_reingested():
+    cfg, stores, pub, corr, reply, intake = _wire_ack()
+    intake.handle(_report_env(contact_ref="wa:a2", bot_id="bot-1", channel="whatsapp"))
+    assert reply.replies == []                              # aún sin foto → sin acuse
+    intake.on_media_stored(_media_env(contact_ref="wa:a2", media_ref="s3://b/m/a2"))
+    assert len(reply.replies) == 1                          # acuse al llegar la foto
+    intake.on_media_stored(_media_env(contact_ref="wa:a2", media_ref="s3://b/m/a2"))  # redelivery
+    assert len(reply.replies) == 1                          # idempotente: un solo acuse por reporte
+
+
+def test_ack_on_photo_before_report():
+    """La foto llega antes de completar el reporte: se acusa igual (RF-16), una sola vez por foto."""
+    cfg, stores, pub, corr, reply, intake = _wire_ack()
+    intake.on_media_stored(_media_env(contact_ref="wa:b1", media_ref="s3://b/m/b1"))
+    assert len(reply.replies) == 1                          # acuse aunque no haya reporte aún
+    assert "analizando" in reply.replies[0]["payload"]["jwe_body"].lower()
+    intake.handle(_report_env(contact_ref="wa:b1"))         # el reporte llega después
+    assert len(reply.replies) == 1                          # no re-acusa la misma foto (dedup por media_ref)
+    ingested = [e for t, e in pub.events if t == "report.ingested"]
+    assert any(e["payload"].get("media_ref") == "s3://b/m/b1" for e in ingested)  # correlada para enrolar
+
+
+def test_no_ack_without_reply_publisher():
+    cfg, stores, pub, corr, intake = _wire_corr()          # sin reply_pub
+    intake.handle(_report_env(contact_ref="wa:a3", media_ref="s3://b/m/a3"))
+    assert all(t != "notification.sent" for t, _ in pub.events)   # sin canal → sin acuse ni auditoría
 
 
 def test_deceased_requires_evidence():

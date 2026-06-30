@@ -42,8 +42,8 @@ class Turn:
                     ts=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
 
 
-# Campos del núcleo obligatorio de un reporte (igual que ReportDraft).
-_CORE_FIELDS = ("subject_name", "id_type", "id_number")
+# Pistas localizables: al menos una hace "accionable" un reporte (la cara o el dónde).
+_LOCATOR_FIELDS = ("location",)
 
 
 @dataclass(frozen=True)
@@ -58,10 +58,12 @@ class SessionProfile:
     subject_name: Optional[str] = None       # núcleo del reporte (sujeto del reporte)
     id_type: Optional[str] = None
     id_number: Optional[str] = None
+    location: Optional[str] = None           # dónde fue visto por última vez (resumen de cierre, ADR-0020)
     notes: Optional[str] = None
     turn_count: int = 0
     report_emitted: bool = False             # evita re-publicar report.received en cada turno
     completion_notified: bool = False        # evita repetir el aviso de "reporte completo" (ADR-0016)
+    photo_retry_count: int = 0               # fotos inservibles seguidas → límite y derivación (ADR-0020 RF-19)
     # Desambiguación multi-rostro en curso (ADR-0016): si está seteado, el próximo mensaje del
     # usuario se interpreta como la elección del rostro, no como conversación normal.
     pending_disambiguation_id: Optional[str] = None
@@ -69,13 +71,21 @@ class SessionProfile:
 
     @property
     def report_complete(self) -> bool:
-        """¿El reporte acumulado tiene intención + núcleo obligatorio (nombre + tipo + nº id)?"""
-        return bool(self.intention) and all(getattr(self, f) for f in _CORE_FIELDS)
+        """¿El reporte es accionable? Intención + nombre + al menos una pista localizable.
+
+        El documento (cédula) es **opcional**: quien reporta a un tercero —un familiar mayor, p. ej.—
+        rara vez tiene su cédula, y la identidad del sistema es **biométrica** (la cara, no el número).
+        Las fotos llegan por el vault-worker, fuera de la vista de esta capa de texto, así que la pista
+        observable aquí es la **última ubicación**; si además llega una foto, el core la correlaciona al
+        publicarse el reporte (ADR-0016).
+        """
+        return (bool(self.intention) and bool(self.subject_name)
+                and any(getattr(self, f) for f in _LOCATOR_FIELDS))
 
     def merged_with(self, *, intention: Optional[str] = None, subject_name: Optional[str] = None,
                     id_type: Optional[str] = None, id_number: Optional[str] = None,
-                    notes: Optional[str] = None, declared_name: Optional[str] = None
-                    ) -> "SessionProfile":
+                    notes: Optional[str] = None, declared_name: Optional[str] = None,
+                    location: Optional[str] = None) -> "SessionProfile":
         """Funde datos nuevos sin pisar lo ya conocido con valores vacíos (acumulación monotónica)."""
         return replace(
             self,
@@ -84,6 +94,7 @@ class SessionProfile:
             subject_name=subject_name or self.subject_name,
             id_type=id_type or self.id_type,
             id_number=id_number or self.id_number,
+            location=location or self.location,
             notes=notes or self.notes,
         )
 
@@ -117,6 +128,8 @@ class ConversationContext:
             parts.append(f"sujeto del reporte: {p.subject_name}")
         if p.id_type or p.id_number:
             parts.append(f"documento: {p.id_type or '?'} {p.id_number or '?'}")
+        if p.location:
+            parts.append(f"última ubicación: {p.location}")
         if p.notes:
             parts.append(f"notas: {p.notes}")
         return "; ".join(parts)

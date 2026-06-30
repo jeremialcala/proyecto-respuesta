@@ -46,4 +46,5 @@ class ReportDraft:
     id_type: Optional[str] = None
     id_number: Optional[str] = None
     notes: Optional[str] = None
+    location: Optional[str] = None       # dónde fue visto por última vez (resumen de cierre, ADR-0020)
     complete: bool = False               # ¿tiene el núcleo obligatorio? (nombre + tipo + nº id)

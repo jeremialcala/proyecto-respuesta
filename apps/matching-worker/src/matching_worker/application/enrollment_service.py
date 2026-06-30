@@ -85,12 +85,14 @@ class EnrollmentService:
         return True
 
     def _enroll(self, entity_id: str, face: FaceMap, report_id: Optional[str],
-                source: str, reporter: Optional[dict] = None) -> None:
+                source: str, reporter: Optional[dict] = None,
+                media_ref: Optional[str] = None) -> None:
         self._store.add_reference(entity_id, face.embedding)   # upsert por entity_id (idempotente)
         self._index.rebuild_from(self._store)                  # refresca el ANN desde pgvector
         payload = {
             "entity_id": entity_id,
             "report_id": report_id,
+            "media_ref": media_ref,   # foto del reporte para el cierre tipo imagen (ADR-0020)
             "face_quality": {"size_px": face.quality.size_px, "blur_var": face.quality.blur_var},
             "det_score": face.det_score,
             "source": source,
@@ -170,7 +172,8 @@ class EnrollmentService:
             self._fail(entity_id, report_id, "no_face", reporter)
             return
         if len(faces) == 1:
-            self._enroll(entity_id, faces[0], report_id, "report.ingested", reporter)
+            self._enroll(entity_id, faces[0], report_id, "report.ingested", reporter,
+                         media_ref=media_ref)
             log.info("  ↳ enrolamiento completo en %.0f ms total", (time.monotonic() - t0) * 1000)
             return
 
@@ -188,7 +191,7 @@ class EnrollmentService:
             entity_id=entity_id, report_id=report_id, faces=pending_faces,
             conversation_key=conversation_key,
             created_at=_iso(now), expires_at=_iso(now + timedelta(seconds=self._pending_ttl)),
-            reporter=reporter,
+            reporter=reporter, media_ref=media_ref,
         )
         self._pending.save(pending)
         req = {
@@ -259,6 +262,7 @@ class EnrollmentService:
             FaceMap(embedding=chosen.embedding, quality=_zero_quality(),
                     bbox=chosen.bbox, det_score=chosen.det_score),
             pending.report_id, "face.disambiguation.resolved", reporter,
+            media_ref=pending.media_ref,
         )
         self._purge(pending, all_crops)                # minimización: purga recortes + revoca concesiones
         self._pending.mark_resolved(disambiguation_id)

@@ -10,8 +10,37 @@ Tipos de cambio: `Added` (nuevo), `Changed` (cambios en lo existente), `Deprecat
 
 ## [Unreleased]
 
+### Changed
+
+- **Documento de identidad ahora OPCIONAL en el reporte; accionable = nombre + (foto o ubicación)**
+  (revisa ADR-0007; habilita ADR-0016/0020). En un terremoto, quien reporta a un familiar mayor casi
+  nunca tiene su cédula a mano y la identidad del sistema es **biométrica** (la cara, no el número):
+  exigir `id_type`/`id_number` bloqueaba todo el ciclo de enrolamiento y cierre. Ahora el único campo
+  obligatorio es el **nombre**; el reporte se da por *accionable* (dispara enrolamiento + cierre) con
+  **nombre + una pista localizable** (foto **o** última ubicación). El gate vive en el chatbot
+  (`SessionProfile.report_complete`) y el intake del core solo valida el nombre (`Report.id_type/`
+  `id_number` → opcionales). El LLM pide la cédula **una sola vez** y no insiste ni bloquea. Corrige
+  la prueba en WhatsApp real donde un reporte con nombre + ubicación + foto **no cerraba** por faltar
+  el documento.
+
 ### Added
 
+- **Notificaciones del ciclo de enrolamiento al reportante (ADR-0020, fase 03)** — cierra el lazo del
+  reporte por chatbot: (1) **acuse** "recibimos la foto y la estamos analizando" emitido por el
+  `core-backend` al correlacionar la foto (RF-16, idempotente por reporte); (2) **cierre tipo imagen**
+  con la foto del reporte (URL firmada del media-gateway, ADR-0017) + **resumen** (nombre, documento,
+  última ubicación, info adicional; ausentes → "no especificado") armado desde el borrador de sesión
+  (RF-17/18); (3) **mejor-foto** con guía y **límite de reintentos** → derivación a coordinador
+  (RF-19); (4) **auditoría** `notification.sent` con `purpose ∈ {ack, closing, better_photo,
+  disambiguation}` (RF-22). Se añadió el campo **ubicación** de punta a punta (LLM → borrador →
+  resumen) y se extendieron los contratos (`OutboundReply.kind/media`, `entity.enrolled.media_ref`,
+  `NotificationSent.purpose/contact_ref`, `report.ingested.location`). Toca `matching-worker`,
+  `chatbot-gateway`, `core-backend` y `output-service` (que ya sabía enviar imágenes por concesión).
+  Refinado tras prueba en WhatsApp real: el **acuse se dispara también si la foto llega antes de
+  completar el reporte** (dedup por `media_ref`); el LLM ya **no inventa un registro de reportes**
+  (grounding a la sesión, anti-alucinación); y el cierre **degrada a resumen en texto** cuando no hay
+  plano de medios accesible (la imagen real exige el media-gateway público de ADR-0017, no localhost).
+  136 tests por servicio en verde.
 - **IaC de provisioning — bootstrap Terraform + workflow CI** (`deploy/terraform/`,
   `.github/workflows/terraform-bootstrap.yml`): primera capa de infraestructura como código para
   AWS `sa-east-1` (ADR-0006). Modelo de identidad de **mínimo privilegio**: usuario `respuesta-ci`

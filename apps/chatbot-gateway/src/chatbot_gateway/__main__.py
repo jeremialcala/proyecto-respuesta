@@ -15,6 +15,7 @@ from .adapters.noop_event_log import NoopEventLog
 from .adapters.ollama_embedder import NullEmbedder, OllamaEmbedder
 from .adapters.ollama_llm import OllamaLlmClient
 from .adapters.passthrough_cipher import PassthroughCipher
+from .adapters.sns_notification_publisher import SnsNotificationPublisher
 from .adapters.sqs_consumer import SqsConsumer
 from .adapters.sqs_publisher import SqsPublisher
 from .config import ChatbotConfig
@@ -36,13 +37,16 @@ def build_service(cfg: ChatbotConfig, pub) -> ChatbotService:
     # Embeddings: Ollama si hay modelo configurado; si no, deshabilitados (solo ventana reciente).
     embedder = OllamaEmbedder(cfg.ollama_url, cfg.embed_model) if cfg.embed_model else NullEmbedder()
 
+    # notification.sent al topic SNS (auditoría RF-22); no-op si no hay ARN configurado.
+    notify_pub = SnsNotificationPublisher(cfg.notification_sent_topic_arn, cfg.aws_region)
+
     return ChatbotService(
         cfg,
         cipher=PassthroughCipher(),
         llm=OllamaLlmClient(cfg.ollama_url, cfg.llm_model,
                             timeout=cfg.ollama_timeout, keep_alive=cfg.ollama_keep_alive),
         reply_pub=pub, report_pub=pub, event_log=NoopEventLog(),
-        conversations=store, embedder=embedder, resolved_pub=pub,
+        conversations=store, embedder=embedder, resolved_pub=pub, notification_pub=notify_pub,
     )
 
 

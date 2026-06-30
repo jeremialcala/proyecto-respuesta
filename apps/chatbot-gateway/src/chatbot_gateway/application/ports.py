@@ -64,5 +64,11 @@ class ReportPublisher(Protocol):
     def publish_report(self, envelope: dict) -> None: ...
 
 
+class NotificationPublisher(Protocol):
+    """Publica notification.sent para auditar las notificaciones al reportante (ADR-0020 RF-22)."""
+
+    def publish_notification(self, envelope: dict) -> None: ...
+
+
 class EventLog(Protocol):
     def record_action(self, event_id: str, action: str, status: str, detail: str = "") -> None: ...

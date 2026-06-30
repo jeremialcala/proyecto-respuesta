@@ -167,6 +167,7 @@ services:
       # Desambiguación multi-rostro (ADR-0016): consume requested, publica resolved
       SQS_FACE_DISAMBIGUATION_REQUESTED_URL: http://localstack:4566/000000000000/face-disambiguation-requested
       SQS_DISAMBIGUATION_RESOLVED_URL: http://localstack:4566/000000000000/face-disambiguation-resolved
+      SNS_NOTIFICATION_SENT_ARN: arn:aws:sns:sa-east-1:000000000000:notification-sent   # auditoría ADR-0020 RF-22
       OLLAMA_URL: ${OLLAMA_URL:-http://llm:11434}   # servicio llm del compose (perfil llm). Host: http://host.docker.internal:11434
       LLM_MODEL: ${LLM_MODEL:-gemma3:27b}
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-120}      # s; sube si el modelo es grande / hay cola
@@ -210,6 +211,8 @@ services:
       SQS_REPORT_RECEIVED_URL: http://localstack:4566/000000000000/report-received
       SNS_REPORT_INGESTED_ARN: arn:aws:sns:sa-east-1:000000000000:report-ingested
       SNS_STATE_CHANGED_ARN: arn:aws:sns:sa-east-1:000000000000:state-changed
+      SNS_NOTIFICATION_SENT_ARN: arn:aws:sns:sa-east-1:000000000000:notification-sent   # ADR-0020 RF-22
+      SQS_OUTBOUND_REPLY_URL: http://localstack:4566/000000000000/outbound-reply         # acuse RF-16
     ports: ["8081:8080"]
 
   core-backend-consumer:
@@ -230,6 +233,8 @@ services:
       SQS_MEDIA_STORED_URL: http://localstack:4566/000000000000/media-stored-intake
       SNS_REPORT_INGESTED_ARN: arn:aws:sns:sa-east-1:000000000000:report-ingested
       SNS_STATE_CHANGED_ARN: arn:aws:sns:sa-east-1:000000000000:state-changed
+      SNS_NOTIFICATION_SENT_ARN: arn:aws:sns:sa-east-1:000000000000:notification-sent   # ADR-0020 RF-22
+      SQS_OUTBOUND_REPLY_URL: http://localstack:4566/000000000000/outbound-reply         # acuse RF-16
     # Reusa la imagen de core-backend (trae un HEALTHCHECK HTTP /healthz para el API uvicorn), pero aquí
     # corre como worker de cola SIN servidor HTTP → el healthcheck heredado siempre falla. Se desactiva:
     # la salud real es "consume sus colas" (visible en logs y DLQ por redrive).

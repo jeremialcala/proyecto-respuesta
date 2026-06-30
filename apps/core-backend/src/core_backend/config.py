@@ -12,6 +12,8 @@ class CoreConfig:
     media_stored_queue_url: str = ""       # SQS: media.stored (correlación foto↔reporte, ADR-0016)
     report_ingested_topic_arn: str = ""    # SNS: report.ingested → matching/enrolamiento
     state_changed_topic_arn: str = ""      # SNS: state.changed → notificación + auditoría
+    notification_sent_topic_arn: str = ""  # SNS: notification.sent (auditoría del acuse, ADR-0020 RF-22)
+    outbound_reply_queue_url: str = ""     # SQS: outbound.reply (acuse al reportante, ADR-0020 RF-16)
     pgvector_dsn: str = ""                  # Postgres (reportes, entidades, auditoría)
     redis_url: str = "redis://localhost:6379/0"   # correlación foto↔reporte por contacto
     correlation_ttl_seconds: int = 86400          # ventana para vincular foto y reporte (ADR-0015)
@@ -27,6 +29,8 @@ class CoreConfig:
             media_stored_queue_url=os.getenv("SQS_MEDIA_STORED_URL", ""),
             report_ingested_topic_arn=os.getenv("SNS_REPORT_INGESTED_ARN", ""),
             state_changed_topic_arn=os.getenv("SNS_STATE_CHANGED_ARN", ""),
+            notification_sent_topic_arn=os.getenv("SNS_NOTIFICATION_SENT_ARN", ""),
+            outbound_reply_queue_url=os.getenv("SQS_OUTBOUND_REPLY_URL", ""),
             pgvector_dsn=os.getenv("PGVECTOR_DSN", ""),
             redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
             correlation_ttl_seconds=int(os.getenv("CORRELATION_TTL_SECONDS", "86400")),

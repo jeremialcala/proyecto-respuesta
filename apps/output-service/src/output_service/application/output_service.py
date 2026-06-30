@@ -6,6 +6,7 @@ Consume `outbound.reply`, descifra el cuerpo, decide el modo de entrega según l
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from ..config import OutputConfig
@@ -17,6 +18,10 @@ from .ports import BodyCipher, EventLog, MediaGrantClient, MetaSender, WindowSto
 # Concesión de medios para mostrar rostros en el chat (ADR-0016 §6 / ADR-0017).
 _DISAMBIGUATION_PURPOSE = "disambiguation_crop"
 _CROP_CONTENT_TYPE = "image/jpeg"   # los recortes de rostro se guardan como JPEG
+# Cierre de enrolamiento con la foto del reporte (ADR-0020 RF-18).
+_CLOSING_PURPOSE = "enrollment_closing"
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -34,6 +39,8 @@ def _parse(envelope: dict, cipher: BodyCipher) -> OutboundReply:
         event_id=envelope.get("event_id"),
         media_refs=tuple(p.get("media_refs", ()) or ()),
         report_id=p.get("report_id"),
+        kind=p.get("kind", "text"),
+        media_ref=(p.get("media") or {}).get("media_ref") or p.get("media_ref"),
     )
 
 
@@ -59,6 +66,29 @@ class OutputService:
             self._log.record_action(reply.event_id or "", "outbound",
                                     DeliveryMode.INTERACTIVE.value, reply.contact_ref)
             return SendResult(DeliveryMode.INTERACTIVE)
+
+        # Cierre tipo imagen (ADR-0020): la foto del reporte por URL firmada + el resumen como caption.
+        # Requiere ventana abierta (image message es texto libre para Meta). Si no se puede servir la
+        # imagen (sin media-gateway o falla la concesión), el resumen igual llega como TEXTO: la imagen
+        # exige el plano público del media-gateway alcanzable por Meta (ADR-0017), no aplica en localhost.
+        if reply.kind == "image" and reply.media_ref and within_window:
+            link = None
+            if self._grants is not None:
+                try:
+                    link = self._grants.issue_grant(
+                        reply.media_ref, content_type=_CROP_CONTENT_TYPE, purpose=_CLOSING_PURPOSE,
+                        channel=reply.channel, report_id=reply.report_id)
+                except Exception:
+                    log.warning("concesión de imagen de cierre falló; degrado a texto", exc_info=True)
+            if link:
+                self._sender.send_image(reply.bot_id, reply.channel, reply.contact_ref, link, reply.text)
+                self._log.record_action(reply.event_id or "", "outbound", DeliveryMode.IMAGE.value,
+                                        reply.contact_ref)
+                return SendResult(DeliveryMode.IMAGE)
+            self._sender.send_text(reply.bot_id, reply.channel, reply.contact_ref, reply.text)
+            self._log.record_action(reply.event_id or "", "outbound", DeliveryMode.TEXT.value,
+                                    reply.contact_ref)
+            return SendResult(DeliveryMode.TEXT)
 
         mode = choose_delivery(within_window=within_window)
         if mode is DeliveryMode.TEXT:

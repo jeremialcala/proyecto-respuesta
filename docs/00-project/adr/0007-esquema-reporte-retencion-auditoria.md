@@ -21,10 +21,15 @@ acciones de alto costo (T10/T11).
 
 **1. Esquema dinámico del reporte con un núcleo obligatorio.**
 
-- **Campos obligatorios:** `nombre_completo`, `tipo_identificacion`, `numero_identificacion`.
-- **Campos opcionales:** `foto` (medio en bóveda — ADR-0005/0008), `ultima_ubicacion`
+- **Campo obligatorio:** `nombre_completo`.
+- **Campos opcionales:** `tipo_identificacion` y `numero_identificacion` (**documento opcional** —
+  revisado por ADR-0016/0020: quien reporta a un tercero rara vez tiene su cédula y la identidad del
+  sistema es **biométrica**, no el número), `foto` (medio en bóveda — ADR-0005/0008), `ultima_ubicacion`
   (coordenada **o** dirección de texto), `notas_generales` (texto libre, p. ej. dolencias crónicas,
   medicamentos requeridos — dato de salud, categoría especial GDPR Art. 9).
+- **Accionabilidad** (cuándo el reporte dispara enrolamiento/cierre): además del nombre, requiere al
+  menos **una pista localizable** — una **foto** o la **última ubicación**. Se exige en la capa
+  conversacional (chatbot-gateway); el intake del core solo valida el nombre.
 - El resto de atributos se modela como **pares clave-valor extensibles** por tipo de reporte, sin
   migración de esquema cuando aparece un atributo nuevo. La **máquina de estados** del charter (no
   el esquema) gobierna el ciclo de vida.

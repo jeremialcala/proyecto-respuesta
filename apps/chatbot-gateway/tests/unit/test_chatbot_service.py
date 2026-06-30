@@ -45,6 +45,7 @@ class FakePub:
         self.replies = []
         self.reports = []
         self.resolved = []
+        self.notifications = []
 
     def publish_reply(self, env):
         self.replies.append(env)
@@ -55,6 +56,9 @@ class FakePub:
     def publish_resolved(self, env):
         self.resolved.append(env)
 
+    def publish_notification(self, env):
+        self.notifications.append(env)
+
 
 class Log:
     def __init__(self):
@@ -64,12 +68,12 @@ class Log:
         self.a.append((action, status))
 
 
-def _svc(llm, store=None, embedder=None):
+def _svc(llm, store=None, embedder=None, cfg=None):
     pub, log = FakePub(), Log()
-    svc = ChatbotService(ChatbotConfig(producer="chatbot-gateway"),
+    svc = ChatbotService(cfg or ChatbotConfig(producer="chatbot-gateway"),
                          FakeCipher(), llm, pub, pub, log,
                          conversations=store or MemoryConversationStore(),
-                         embedder=embedder or FakeEmbedder(), resolved_pub=pub)
+                         embedder=embedder or FakeEmbedder(), resolved_pub=pub, notification_pub=pub)
     return svc, pub, log
 
 
@@ -98,22 +102,34 @@ def test_injection_blocked_no_llm_call():
 
 
 def test_complete_report_is_published():
-    draft = ReportDraft(intention="desaparecido", subject_name="Juan Pérez",
-                        id_type="V", id_number="123", complete=True)
+    """Accionable = nombre + ubicación (sin documento); se publica report.received."""
+    draft = ReportDraft(intention="desaparecido", subject_name="Carmen Suárez",
+                        location="La Guaira", complete=True)
     svc, pub, _ = _svc(FakeLlm(reply="Registrado, gracias.", draft=draft))
-    res = svc.handle(_env({"kind": "text", "text": "busco a Juan Pérez V-123"}))
+    res = svc.handle(_env({"kind": "text", "text": "busco a Carmen Suárez, vista en La Guaira"}))
     assert res.outcome is Outcome.REPLIED_WITH_REPORT
     assert len(pub.reports) == 1
     rep = pub.reports[0]
     assert rep["event_type"] == "report.received"
     assert rep["payload"]["intention"] == "desaparecido"
+    assert rep["payload"]["location"] == "La Guaira"
+    assert rep["payload"]["id_number"] is None         # documento opcional, ausente
     assert rep["payload"]["source"] == "chatbot:whatsapp"
 
 
-def test_incomplete_draft_not_published():
+def test_incomplete_without_locator_not_published():
+    """Nombre sin pista localizable (ni foto ni ubicación) → aún no accionable, no se publica."""
     draft = ReportDraft(intention="desaparecido", subject_name="Juan", complete=False)
     svc, pub, _ = _svc(FakeLlm(draft=draft))
     res = svc.handle(_env({"kind": "text", "text": "busco a Juan"}))
+    assert res.outcome is Outcome.REPLIED and pub.reports == []
+
+
+def test_document_alone_does_not_complete_report():
+    """El documento NO completa el reporte: falta la pista localizable (ubicación/foto)."""
+    draft = ReportDraft(intention="desaparecido", subject_name="Juan", id_type="V", id_number="123")
+    svc, pub, _ = _svc(FakeLlm(draft=draft))
+    res = svc.handle(_env({"kind": "text", "text": "busco a Juan, cédula V-123"}))
     assert res.outcome is Outcome.REPLIED and pub.reports == []
 
 
@@ -137,21 +153,21 @@ def test_location_acked_without_llm():
 def test_report_accumulated_across_turns_and_emitted_once():
     """El reporte se completa en varios turnos; se publica una sola vez y luego no se repite."""
     store = MemoryConversationStore()
-    # Turno 1: solo nombre+intención (incompleto). Turno 2: documento → completo. Turno 3: charla.
-    t1 = ("¿Me das su documento?", ReportDraft(intention="desaparecido", subject_name="Juan Pérez"))
-    t2 = ("Listo, registrado.", ReportDraft(intention="desaparecido", id_type="V", id_number="123"))
+    # Turno 1: solo nombre+intención (incompleto). Turno 2: ubicación → accionable. Turno 3: charla.
+    t1 = ("¿Dónde la viste por última vez?", ReportDraft(intention="desaparecido", subject_name="Juan Pérez"))
+    t2 = ("Listo, registrado.", ReportDraft(intention="desaparecido", location="La Guaira"))
     t3 = ("Gracias a ti.", None)
     llm = FakeLlm(scripted=[t1, t2, t3])
     svc, pub, _ = _svc(llm, store=store)
 
     r1 = svc.handle(_env({"kind": "text", "text": "busco a Juan Pérez, desapareció"}))
-    assert r1.outcome is Outcome.REPLIED and pub.reports == []      # aún incompleto
+    assert r1.outcome is Outcome.REPLIED and pub.reports == []      # aún incompleto (sin pista)
 
-    r2 = svc.handle(_env({"kind": "text", "text": "su cédula es V-123"}))
+    r2 = svc.handle(_env({"kind": "text", "text": "lo vieron en La Guaira"}))
     assert r2.outcome is Outcome.REPLIED_WITH_REPORT                # se completó acumulando turnos
     assert len(pub.reports) == 1
     rep = pub.reports[0]["payload"]
-    assert (rep["subject_name"], rep["id_type"], rep["id_number"]) == ("Juan Pérez", "V", "123")
+    assert (rep["subject_name"], rep["location"]) == ("Juan Pérez", "La Guaira")
 
     r3 = svc.handle(_env({"kind": "text", "text": "muchas gracias"}))
     assert r3.outcome is Outcome.REPLIED and len(pub.reports) == 1  # NO se republica
@@ -177,10 +193,12 @@ def test_context_passed_to_llm_carries_history_and_profile():
 
 # --- feedback de enrolamiento de la foto (ADR-0016) ---
 
-def _enrolled_env(contact="584120000000"):
-    return {"event_id": "evt-enr", "event_type": "entity.enrolled",
-            "payload": {"entity_id": "ent_1", "report_id": "rep_1",
-                        "bot_id": "bot-1", "channel": "whatsapp", "contact_ref": contact}}
+def _enrolled_env(contact="584120000000", media_ref=None):
+    payload = {"entity_id": "ent_1", "report_id": "rep_1",
+               "bot_id": "bot-1", "channel": "whatsapp", "contact_ref": contact}
+    if media_ref:
+        payload["media_ref"] = media_ref
+    return {"event_id": "evt-enr", "event_type": "entity.enrolled", "payload": payload}
 
 
 def _failed_env(reason, contact="584120000000"):
@@ -216,6 +234,57 @@ def test_enrollment_failed_invalid_selection_is_silent():
     svc, pub, _ = _svc(FakeLlm())
     svc.on_enrollment_failed(_failed_env("invalid_selection"))
     assert pub.replies == []                              # sin acción del usuario → no se le molesta
+
+
+# --- cierre tipo imagen + resumen (ADR-0020 RF-17/18) ---
+
+def test_entity_enrolled_image_closing_with_summary():
+    store = MemoryConversationStore()
+    draft = ReportDraft(intention="desaparecido", subject_name="Juan Pérez", id_type="V",
+                        id_number="123", location="Yaracuy", notes="camisa azul", complete=True)
+    svc, pub, _ = _svc(FakeLlm(reply="Registrado.", draft=draft), store=store)
+    svc.handle(_env({"kind": "text", "text": "busco a Juan Pérez V-123 visto en Yaracuy, camisa azul"}))
+    pub.replies.clear()
+    svc.on_entity_enrolled(_enrolled_env(media_ref="vault://m/foto1"))
+    assert len(pub.replies) == 1
+    pl = pub.replies[0]["payload"]
+    assert pl["kind"] == "image" and pl["media"]["media_ref"] == "vault://m/foto1"
+    cap = pl["jwe_body"]
+    assert "Juan Pérez" in cap and "V 123" in cap and "Yaracuy" in cap and "camisa azul" in cap
+    assert [n["payload"]["purpose"] for n in pub.notifications] == ["closing"]
+
+
+def test_closing_summary_no_especificado_when_profile_empty():
+    svc, pub, _ = _svc(FakeLlm(), store=MemoryConversationStore())
+    svc.on_entity_enrolled(_enrolled_env(media_ref="vault://m/x"))
+    pl = pub.replies[0]["payload"]
+    assert pl["kind"] == "image" and "no especificado" in pl["jwe_body"]
+
+
+def test_location_in_report_received_payload():
+    draft = ReportDraft(intention="desaparecido", subject_name="Ana", id_type="V", id_number="9",
+                        location="Valencia", complete=True)
+    svc, pub, _ = _svc(FakeLlm(reply="ok", draft=draft))
+    svc.handle(_env({"kind": "text", "text": "Ana V-9 vista en Valencia"}))
+    assert pub.reports[0]["payload"]["location"] == "Valencia"
+
+
+# --- mejor-foto con límite de reintentos y derivación a coordinador (ADR-0020 RF-19 / AB-N1) ---
+
+def test_enrollment_failed_retry_limit_derives_to_coordinator():
+    cfg = ChatbotConfig(producer="chatbot-gateway", max_photo_retries=2)
+    svc, pub, _ = _svc(FakeLlm(), store=MemoryConversationStore(), cfg=cfg)
+    svc.on_enrollment_failed(_failed_env("no_face"))     # intento 1 → mejor foto
+    svc.on_enrollment_failed(_failed_env("no_face"))     # intento 2 → mejor foto
+    svc.on_enrollment_failed(_failed_env("no_face"))     # intento 3 (> 2) → deriva a coordinador
+    assert "coordinador" in pub.replies[-1]["payload"]["jwe_body"].lower()
+    assert [n["payload"]["purpose"] for n in pub.notifications] == ["better_photo"] * 3
+
+
+def test_disambiguation_emits_notification_sent():
+    svc, pub, _ = _svc(FakeLlm(), store=MemoryConversationStore())
+    svc.on_face_disambiguation_requested(_disambig_env(n=2))
+    assert [n["payload"]["purpose"] for n in pub.notifications] == ["disambiguation"]
 
 
 # --- desambiguación multi-rostro (ADR-0016) ---

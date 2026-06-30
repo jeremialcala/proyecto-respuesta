@@ -17,6 +17,7 @@ from .adapters.pg_stores import PgStores
 from .adapters.redis_correlation_store import RedisCorrelationStore
 from .adapters.sns_publisher import SnsPublisher
 from .adapters.sqs_consumer import SqsConsumer
+from .adapters.sqs_reply_publisher import SqsReplyPublisher
 from .config import CoreConfig
 
 log = logging.getLogger(__name__)
@@ -26,9 +27,12 @@ def build_intake(cfg: CoreConfig) -> IntakeService:
     stores = PgStores(cfg.pgvector_dsn)
     stores.init_schema()   # idempotente (CREATE TABLE IF NOT EXISTS); el consumidor no dependía de la API
     publisher = SnsPublisher({"report.ingested": cfg.report_ingested_topic_arn,
-                              "state.changed": cfg.state_changed_topic_arn}, cfg.aws_region)
+                              "state.changed": cfg.state_changed_topic_arn,
+                              "notification.sent": cfg.notification_sent_topic_arn}, cfg.aws_region)
     correlation = RedisCorrelationStore(cfg.redis_url, cfg.correlation_ttl_seconds)
-    return IntakeService(cfg, stores, stores, ChainedAudit(stores), publisher, correlation)
+    reply_pub = SqsReplyPublisher(cfg.outbound_reply_queue_url, cfg.aws_region)  # acuse RF-16
+    return IntakeService(cfg, stores, stores, ChainedAudit(stores), publisher, correlation,
+                         reply_pub=reply_pub)
 
 
 def build_consumers(cfg: CoreConfig, intake: IntakeService) -> list[SqsConsumer]:

@@ -34,6 +34,6 @@ class Report:
     """Reporte con esquema dinámico (ADR-0007): núcleo obligatorio + atributos extensibles."""
     intention: str
     subject_name: str
-    id_type: str
-    id_number: str
+    id_type: Optional[str] = None      # documento opcional: la identidad del sistema es biométrica
+    id_number: Optional[str] = None
     attributes: dict = field(default_factory=dict)   # foto/ubicación/notas y futuros, sin migración

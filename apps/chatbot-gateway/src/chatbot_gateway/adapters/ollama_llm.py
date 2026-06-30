@@ -27,9 +27,18 @@ _SYSTEM = (
     "que la mande por este mismo chat. NUNCA digas que no puedes recibir imágenes; el sistema las "
     "procesa de forma segura. Recuerdas lo que la persona ya te dijo en esta "
     "conversación: NO vuelvas a pedir datos que ya tienes. NO decides coincidencias ni cambias "
-    "estados; eso lo hacen humanos. Responde SOLO con un JSON: {\"reply\": str, \"report\": "
+    "estados; eso lo hacen humanos. NO tienes acceso a una base de datos ni a un registro de reportes: "
+    "NUNCA inventes reportes previos, ni afirmes 'según mi registro', ni digas que muestras un reporte "
+    "guardado. Si te preguntan a quién han reportado o que muestres 'el reporte', responde SOLO con lo "
+    "capturado en ESTA conversación (lo que aparece en 'Datos ya conocidos'); si aún no hay datos, dilo "
+    "con claridad y pide la información que falta. Lo ESENCIAL para registrar un reporte es: el NOMBRE de "
+    "la persona y DÓNDE fue vista por última vez (y, si puede, una FOTO). El documento de identidad "
+    "(cédula) es OPCIONAL: pídelo UNA sola vez con tacto, pero si no lo tienen, NO insistas ni bloquees "
+    "el reporte por eso —mucha gente reporta a un familiar sin tener su cédula a mano. "
+    "Responde SOLO con un JSON: {\"reply\": str, \"report\": "
     "{\"intention\": \"desaparecido|encontrado|autoreporte\", \"subject_name\": str|null, "
-    "\"id_type\": str|null, \"id_number\": str|null, \"notes\": str|null} | null}."
+    "\"id_type\": str|null, \"id_number\": str|null, \"location\": str|null, \"notes\": str|null} | null}. "
+    "\"location\" es dónde fue visto por última vez la persona, si lo menciona."
 )
 
 
@@ -86,9 +95,10 @@ class OllamaLlmClient:
         rep = out.get("report")
         draft = None
         if isinstance(rep, dict) and rep.get("intention"):
-            complete = bool(rep.get("subject_name") and rep.get("id_type") and rep.get("id_number"))
+            # Accionable = nombre + una pista localizable (ubicación); el documento es opcional.
+            complete = bool(rep.get("subject_name") and rep.get("location"))
             draft = ReportDraft(
                 intention=rep["intention"], subject_name=rep.get("subject_name"),
                 id_type=rep.get("id_type"), id_number=rep.get("id_number"),
-                notes=rep.get("notes"), complete=complete)
+                notes=rep.get("notes"), location=rep.get("location"), complete=complete)
         return reply, draft

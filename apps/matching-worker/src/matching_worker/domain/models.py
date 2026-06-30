@@ -84,6 +84,7 @@ class PendingEnrollment:
     expires_at: str
     status: str = "pending"           # pending | resolved | expired
     reporter: Optional[dict] = None   # {bot_id, channel, contact_ref}: para avisar al cerrar (ADR-0016)
+    media_ref: Optional[str] = None   # foto original del reporte: imagen del cierre al enrolar (ADR-0020)
 
 
 @dataclass(frozen=True)

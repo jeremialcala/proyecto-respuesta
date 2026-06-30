@@ -29,6 +29,12 @@ class EventPublisher(Protocol):
     def publish(self, topic: str, envelope: dict) -> None: ...
 
 
+class ReplyPublisher(Protocol):
+    """Publica outbound.reply (acuse al reportante, RF-16) en la cola que consume el servicio de salida."""
+
+    def publish_reply(self, envelope: dict) -> None: ...
+
+
 class MediaCorrelationStore(Protocol):
     """Correlaciona la foto del contacto con su reporte (ADR-0016). Maneja ambos órdenes de llegada.
 

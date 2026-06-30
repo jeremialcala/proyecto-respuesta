@@ -15,8 +15,9 @@ from ..config import CoreConfig
 from ..domain.models import PersonState, Report
 from ..domain.report import validate_report
 from .chained_audit import ChainedAudit
-from .events import build_envelope
-from .ports import EntityStore, EventPublisher, MediaCorrelationStore, ReportStore
+from .events import _utc_now_iso, build_envelope
+from .ports import (EntityStore, EventPublisher, MediaCorrelationStore, ReplyPublisher,
+                    ReportStore)
 
 log = logging.getLogger(__name__)
 
@@ -41,16 +42,20 @@ class _NoopCorrelation:
 class IntakeService:
     def __init__(self, cfg: CoreConfig, reports: ReportStore, entities: EntityStore,
                  audit: ChainedAudit, publisher: EventPublisher,
-                 correlation: MediaCorrelationStore | None = None) -> None:
+                 correlation: MediaCorrelationStore | None = None,
+                 reply_pub: ReplyPublisher | None = None) -> None:
         self._cfg = cfg
         self._reports = reports
         self._entities = entities
         self._audit = audit
         self._pub = publisher
         self._corr = correlation or _NoopCorrelation()
+        self._reply = reply_pub      # acuse al reportante (RF-16); None → sin acuse (tests sin canal)
+        self._acked: set[str] = set()  # acuse una vez por FOTO (media_ref), llegue antes o después el reporte
 
     def _emit_report_ingested(self, report_id: str, entity_id: str, media_ref: Optional[str],
-                              source: str, reporter: Optional[dict] = None) -> None:
+                              source: str, reporter: Optional[dict] = None,
+                              subject_name: Optional[str] = None) -> None:
         payload = {"report_id": report_id, "entity_id": entity_id,
                    "media_ref": media_ref, "source": source}
         if reporter:   # identidad del reportante para cerrar el lazo con feedback (ADR-0016)
@@ -58,6 +63,29 @@ class IntakeService:
                             "channel": reporter.get("channel", ""),
                             "contact_ref": reporter.get("contact_ref", "")})
         self._pub.publish("report.ingested", build_envelope("report.ingested", payload, self._cfg.producer))
+        if media_ref:   # hay foto → acusa recepción/análisis al reportante (ADR-0020 RF-16)
+            self._ack_photo(media_ref, entity_id, reporter, subject_name)
+
+    def _ack_photo(self, media_ref: Optional[str], entity_id: Optional[str], reporter: Optional[dict],
+                   subject_name: Optional[str] = None) -> None:
+        """Acuse "recibimos la foto y la estamos analizando" (RF-16). Una vez por foto; sin canal, no-op.
+
+        Se dispara al recibir la foto AUNQUE el reporte aún no esté completo (dedup por `media_ref`), así
+        el reportante siempre ve el resultado de la carga (no depende de que el reporte cierre).
+        """
+        contact_ref = (reporter or {}).get("contact_ref", "")
+        if self._reply is None or not contact_ref or not media_ref or media_ref in self._acked:
+            return
+        self._acked.add(media_ref)
+        channel = (reporter or {}).get("channel", "") or "whatsapp"
+        who = f"de {subject_name} " if subject_name else ""
+        text = f"Recibimos la foto {who}y la estamos analizando. Te avisaremos en cuanto esté lista."
+        self._reply.publish_reply(build_envelope("outbound.reply", {
+            "bot_id": (reporter or {}).get("bot_id", ""), "channel": channel,
+            "contact_ref": contact_ref, "jwe_body": text}, self._cfg.producer))
+        self._pub.publish("notification.sent", build_envelope("notification.sent", {
+            "entity_id": entity_id, "channel": channel, "contact_ref": contact_ref,
+            "purpose": "ack", "sent_at": _utc_now_iso()}, self._cfg.producer))
 
     def handle(self, report_received_envelope: dict) -> IntakeResult:
         p = report_received_envelope.get("payload", {}) or {}
@@ -72,7 +100,7 @@ class IntakeService:
         contact_ref = p.get("contact_ref", "")
         report = Report(
             intention=p.get("intention", "desaparecido"),
-            subject_name=p["subject_name"], id_type=p["id_type"], id_number=p["id_number"],
+            subject_name=p["subject_name"], id_type=p.get("id_type"), id_number=p.get("id_number"),
             attributes={k: v for k, v in p.items()
                         if k not in ("intention", "subject_name", "id_type", "id_number", "source")},
         )
@@ -90,7 +118,8 @@ class IntakeService:
                     "contact_ref": contact_ref}
         self._corr.remember_report(contact_ref, report_id, entity_id, reporter)
         media_ref = p.get("media_ref") or self._corr.get_media(contact_ref)
-        self._emit_report_ingested(report_id, entity_id, media_ref, source, reporter)
+        self._emit_report_ingested(report_id, entity_id, media_ref, source, reporter,
+                                   subject_name=report.subject_name)
         if media_ref:
             log.info("report.ingested rep=%s con media_ref correlacionado", report_id)
         return IntakeResult(accepted=True, report_id=report_id, entity_id=entity_id)
@@ -114,3 +143,10 @@ class IntakeService:
                                {"report_id": rep["report_id"], "media_ref": media_ref})
             log.info("media.stored vinculado a rep=%s → report.ingested (enrolamiento)",
                      rep["report_id"])
+        else:
+            # La foto llegó antes de completar el reporte: acusa recibo igual (RF-16), el enrolamiento
+            # vendrá cuando el reporte cierre y correlacione esta foto. Dedup por media_ref.
+            reporter = {"bot_id": p.get("bot_id", ""), "channel": p.get("channel", ""),
+                        "contact_ref": contact_ref}
+            self._ack_photo(media_ref, None, reporter)
+            log.info("media.stored sin reporte aún (contact=%s) → acuse de foto (RF-16)", contact_ref)

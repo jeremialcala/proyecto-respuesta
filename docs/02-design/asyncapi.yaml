@@ -307,9 +307,19 @@ components:
         bot_id: { type: string, format: uuid }
         channel: { $ref: '#/components/schemas/MetaChannel' }
         contact_ref: { type: string }
+        kind:
+          type: string
+          enum: [text, image]
+          default: text
+          description: 'Tipo de mensaje. image = foto + caption (cierre de enrolamiento, ADR-0020).'
         jwe_body:
           type: string
-          description: 'Contenido de la respuesta cifrado en JWE.'
+          description: 'Texto/caption cifrado en JWE.'
+        media:
+          type: object
+          description: 'Solo kind=image: puntero en bóveda; el servicio de salida pide la URL firmada al media-gateway al enviar (ADR-0017).'
+          properties:
+            media_ref: { type: string }
     PersonState:
       type: string
       enum: [desaparecido, a_salvo, localizado_estable, localizado_critico, fallecido, no_identificado]
@@ -334,6 +344,7 @@ components:
       properties:
         entity_id: { type: string }
         report_id: { type: string }
+        media_ref: { type: string, description: 'Foto del reporte para el cierre tipo imagen (ADR-0020).' }
         face_quality: { $ref: '#/components/schemas/FaceQuality' }
         det_score: { type: number, minimum: 0, maximum: 1 }
         source:
@@ -416,6 +427,7 @@ components:
         report_id: { type: string, format: uuid }
         entity_id: { type: string, format: uuid }
         media_ref: { type: string, description: Referencia en el almacén protegido. }
+        location: { type: string, description: 'Última ubicación conocida del sujeto (resumen de cierre, ADR-0020).' }
         contact_ref: { type: string, description: 'Reportante; permite avisarle al cerrar (ADR-0016).' }
         bot_id: { type: string }
         channel: { type: string }
@@ -463,6 +475,11 @@ components:
         entity_id: { type: string, format: uuid }
         channel: { type: string, enum: [whatsapp, instagram, messenger, telegram, web] }
         opt_in: { type: boolean }
+        purpose:
+          type: string
+          enum: [ack, closing, better_photo, disambiguation]
+          description: 'Propósito de la notificación al reportante (ADR-0020 RF-22).'
+        contact_ref: { type: string, description: 'Destino (reportante); el esquema clúster usa opt_in.' }
         sent_at: { type: string, format: date-time }
     FaceExtractRequested:
       type: object
