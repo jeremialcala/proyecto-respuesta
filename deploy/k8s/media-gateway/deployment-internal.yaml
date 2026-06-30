@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: media-gateway-internal
+  labels: {app.kubernetes.io/name: media-gateway-internal, app.kubernetes.io/part-of: respuesta}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: media-gateway-internal}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: media-gateway-internal}
+    spec:
+      serviceAccountName: media-gateway
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: media-gateway-internal
+          image: respuesta/media-gateway:0.1.0
+          # Plano interno (emite concesiones). Mesh privado, sin Ingress.
+          command: ["uvicorn","media_gateway.internal_main:app","--host","0.0.0.0","--port","8081"]
+          ports: [{containerPort: 8081, name: http}]
+          envFrom:
+            - configMapRef: {name: media-gateway-config}
+            - secretRef: {name: media-gateway-secrets}   # GRANT_DSN, AUDIT_DSN, HMAC_KEY_ID (External Secrets)
+          readinessProbe: {httpGet: {path: /healthz, port: http}, initialDelaySeconds: 5, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, initialDelaySeconds: 10, periodSeconds: 15}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: 500m, memory: 256Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]

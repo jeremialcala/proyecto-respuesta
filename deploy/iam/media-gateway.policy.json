@@ -1,0 +1,39 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SignAndVerifyTokenHmac",
+      "Effect": "Allow",
+      "Action": [
+        "kms:GenerateMac",
+        "kms:VerifyMac"
+      ],
+      "Resource": "arn:aws:kms:sa-east-1:ACCOUNT_ID:key/KEY_ID_TOKEN_HMAC",
+      "Condition": {
+        "StringEquals": { "aws:RequestedRegion": "sa-east-1" }
+      }
+    },
+    {
+      "Sid": "ReadEncryptedMediaObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject"
+      ],
+      "Resource": "arn:aws:s3:::respuesta-media/encrypted/*",
+      "Condition": {
+        "StringEquals": { "aws:RequestedRegion": "sa-east-1" }
+      }
+    },
+    {
+      "Sid": "DecryptMediaEnvelope",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt"
+      ],
+      "Resource": "arn:aws:kms:sa-east-1:ACCOUNT_ID:key/KEY_ID_MEDIA",
+      "Condition": {
+        "StringEquals": { "aws:RequestedRegion": "sa-east-1" }
+      }
+    }
+  ]
+}

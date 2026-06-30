@@ -17,6 +17,12 @@ class GatewayConfig:
     redis_url: str = "redis://localhost:6379/0"           # rate-limit
     public_base_url: str = "https://media.respuesta.example"  # base de la URL firmada
     hmac_key_id: str = ""                                  # clave KMS del HMAC del token (ADR-0008)
+    # Selección de adaptadores por entorno (defaults = producción). En dev-local se conmutan a los
+    # fakes de `adapters/` para correr sin KMS, igual que `VAULT_CIPHER=passthrough` del vault-worker.
+    token_signer: str = "kms"                             # kms (prod) | hmac (dev, HMAC compartido)
+    hmac_shared_secret: str = ""                          # solo token_signer=hmac (dev)
+    media_cipher: str = "kms"                             # kms (prod) | passthrough (dev, medios en claro)
+    fetcher_allowlist: str = "meta"                       # meta (prod, rangos/UA) | static (dev, allow-all)
     # Rate-limit (ventana fija por token).
     rate_max_hits: int = 60
     rate_window_seconds: int = 60
@@ -35,6 +41,10 @@ class GatewayConfig:
             redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
             public_base_url=os.getenv("PUBLIC_BASE_URL", "https://media.respuesta.example"),
             hmac_key_id=os.getenv("HMAC_KEY_ID", ""),
+            token_signer=os.getenv("TOKEN_SIGNER", "kms"),
+            hmac_shared_secret=os.getenv("HMAC_SHARED_SECRET", ""),
+            media_cipher=os.getenv("MEDIA_CIPHER", "kms"),
+            fetcher_allowlist=os.getenv("FETCHER_ALLOWLIST", "meta"),
             rate_max_hits=int(os.getenv("RATE_MAX_HITS", "60")),
             rate_window_seconds=int(os.getenv("RATE_WINDOW_SECONDS", "60")),
             meta_fetcher_cidrs=cidrs,

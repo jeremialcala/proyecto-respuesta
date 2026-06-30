@@ -193,9 +193,49 @@ services:
       REDIS_URL: redis://redis:6379/0
       META_GRAPH_TOKEN: ${META_GRAPH_TOKEN:-graph-token-dev}
       WA_PHONE_NUMBER_ID: ${WA_PHONE_NUMBER_ID:-000000000000000}
+      MEDIA_GATEWAY_URL: http://media-gateway-internal:8081   # plano interno (concesión de cierre, ADR-0017/0020)
       OUTPUT_DRY_RUN: ${OUTPUT_DRY_RUN:-true}   # dev local: con token real, ponlo en false (.env)
       HSM_TEMPLATE: ${HSM_TEMPLATE:-jornada_update}   # plantilla aprobada para envíos fuera de la ventana 24h
       HSM_LANG: ${HSM_LANG:-es}
+
+  # Media Delivery Gateway (ADR-0017) — dos planos sobre la misma imagen. En dev corre sin KMS:
+  # firma HMAC en proceso (TOKEN_SIGNER=hmac) y medios en claro (MEDIA_CIPHER=passthrough, como el
+  # vault-worker). En prod son KMS/S3/ALB reales (deploy/k8s/media-gateway). El esquema `grants` se
+  # crea solo al arrancar (init_schema en el startup de uvicorn).
+  media-gateway-internal:
+    build: ./apps/media-gateway
+    # Plano interno: emite concesiones (POST /grants). Lo llama el output-service en el cierre.
+    command: ["uvicorn","media_gateway.internal_main:app","--host","0.0.0.0","--port","8081"]
+    depends_on:
+      postgres: {condition: service_healthy}
+    environment:
+      AWS_REGION: sa-east-1
+      GRANT_DSN: postgresql://respuesta:respuesta@postgres:5432/respuesta
+      TOKEN_SIGNER: hmac
+      HMAC_SHARED_SECRET: ${MEDIA_HMAC_SECRET:-dev-media-hmac}   # mismo secreto que el plano público
+      # URL base que devuelve el grant: el puerto publicado del plano público (curl-able desde el host).
+      PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:-http://localhost:8082}
+    ports: ["8083:8081"]
+
+  media-gateway-public:
+    build: ./apps/media-gateway
+    # Plano público: sirve los bytes de la foto (GET /m/{token}). CMD por defecto del Dockerfile.
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      createbuckets: {condition: service_completed_successfully}
+    environment:
+      AWS_REGION: sa-east-1
+      AWS_ACCESS_KEY_ID: minioadmin       # creds de MinIO para leer la bóveda S3
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_ENDPOINT_URL_S3: http://minio:9000          # bóveda → MinIO (igual que vault-worker)
+      GRANT_DSN: postgresql://respuesta:respuesta@postgres:5432/respuesta
+      REDIS_URL: redis://redis:6379/0
+      TOKEN_SIGNER: hmac
+      HMAC_SHARED_SECRET: ${MEDIA_HMAC_SECRET:-dev-media-hmac}   # mismo secreto que el plano interno
+      MEDIA_CIPHER: passthrough     # los medios dev se guardan en claro (VAULT_CIPHER=passthrough)
+      FETCHER_ALLOWLIST: static     # dev: sirve a curl sin los rangos/UA de Meta
+    ports: ["8082:8080"]
 
   core-backend:
     build: ./apps/core-backend

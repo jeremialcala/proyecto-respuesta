@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: media-gateway-public
+spec:
+  selector: {app.kubernetes.io/name: media-gateway-public}
+  ports: [{port: 80, targetPort: http, name: http}]

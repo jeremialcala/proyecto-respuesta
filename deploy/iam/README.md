@@ -15,6 +15,7 @@ ARNs concretos y a `sa-east-1` mediante la condición `aws:RequestedRegion`.
 | `matching-engine.policy.json` | Motor de matching (GPU, KEDA) | Consumir `media-stored`; `s3:GetObject`; `kms:Decrypt` medios; publicar `candidate-generated` |
 | `portal-backoffice.policy.json` | Portal + Back office (NestJS) | Secrets (Auth0/DB/Redis); S3 medios; KMS PII+medios (ver en claro, auditado); publicar eventos de dominio |
 | `outbound-service.policy.json` | Servicio de salida | Consumir `outbound-reply`; leer token Graph API |
+| `media-gateway.policy.json` | Media Gateway (ALB + mesh interno) | `kms:GenerateMac`/`VerifyMac` (HMAC del token); `s3:GetObject` + `kms:Decrypt` (servir la foto, ADR-0017/0020) |
 | `keda-operator.policy.json` | KEDA operator | `sqs:GetQueueAttributes` + `cloudwatch:GetMetricData` para escalar |
 | `irsa-trust-policy.template.json` | (todos) | Plantilla de trust policy: assume-role vía OIDC del cluster EKS |
 
@@ -23,6 +24,7 @@ ARNs concretos y a `sa-east-1` mediante la condición `aws:RequestedRegion`.
 - `ACCOUNT_ID` — ID de cuenta AWS (12 dígitos).
 - `KEY_ID_MEDIA` / `KEY_ID_PII` / `KEY_ID_EVENTS` — IDs de las KMS keys. **Mantén las keys
   separadas por dominio** (medios vs PII) para que matching no pueda descifrar PII de back office.
+- `KEY_ID_TOKEN_HMAC` — ID de la KMS key HMAC que firma los tokens del media-gateway (ADR-0017).
 - `EKS_OIDC_ID` — ID del OIDC provider del cluster (`aws eks describe-cluster ... identity.oidc.issuer`).
 - `SERVICE_ACCOUNT_NAME` — nombre del ServiceAccount k8s en el namespace `respuesta`.
 

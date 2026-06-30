@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: media-gateway-config
+data:
+  AWS_REGION: "sa-east-1"
+  PUBLIC_BASE_URL: "https://media.respuesta.example"   # base de la URL firmada que descarga Meta
+  REDIS_URL: "redis://respuesta-redis.xxxx.ng.0001.sae1.cache.amazonaws.com:6379/0"
+  RATE_MAX_HITS: "60"
+  RATE_WINDOW_SECONDS: "60"
+  # Allowlist de fetchers de Meta (rangos publicados; mantener por config — ADR-0017). UA por defecto
+  # incluye facebookexternalhit/whatsapp si se deja vacío.
+  META_FETCHER_USER_AGENTS: "facebookexternalhit,whatsapp"
+  META_FETCHER_CIDRS: ""   # rellenar con los rangos publicados de Meta (anti-hotlinking)
+  # TOKEN_SIGNER/MEDIA_CIPHER/FETCHER_ALLOWLIST se omiten → defaults de producción (KMS/Meta).
