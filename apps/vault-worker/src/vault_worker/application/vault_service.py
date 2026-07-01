@@ -67,7 +67,9 @@ class VaultService:
 
         # Cifrado de sobre por sujeto ANTES de tocar el almacén (plano nunca se persiste).
         enc = self._cipher.encrypt(data, subject=m.contact_ref)
-        meta = {"event_id": m.event_id, "message_id": m.message_id,
+        # `scan` DEBE viajar en la metadata del objeto: el media-gateway es fail-closed y solo sirve
+        # objetos con scan=clean (ADR-0017). Sin esto, Meta recibe 403 al descargar la foto del cierre.
+        meta = {"event_id": m.event_id, "message_id": m.message_id, "scan": verdict.value,
                 "media_type": m.media_type, "mime_type": m.mime_type or "", "sha256": digest}
 
         if verdict is ScanVerdict.MALWARE:

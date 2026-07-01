@@ -77,6 +77,9 @@ def test_clean_encrypts_stores_and_publishes():
     # se persiste el CIFRADO, no el plano
     assert store.puts[0]["obj"].ciphertext == b"ENCJPEGDATA"
     assert store.puts[0]["quarantine"] is False
+    # scan=clean DEBE ir en la metadata del objeto (el media-gateway es fail-closed; sin esto Meta
+    # recibe 403 al descargar la foto del cierre — ADR-0017)
+    assert store.puts[0]["metadata"]["scan"] == "clean"
     # media.stored correlacionado y scan=clean
     assert len(pub.events) == 1
     ev = pub.events[0]
