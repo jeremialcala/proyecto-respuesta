@@ -153,6 +153,14 @@ channels:
     subscribe:
       operationId: consumeFaceEmbedded
       message: { $ref: '#/components/messages/FaceEmbedded' }
+  response.evaluated:
+    description: >-
+      Auditoría del evaluador de respuestas del chatbot (ADR-0022): veredicto por dimensión
+      (adecuación, relevancia, redundancia), intentos y modo. SOLO scores y referencias — nunca
+      texto de la conversación ni PII (AB-E5 del PRD del evaluador).
+    publish:
+      operationId: onResponseEvaluated
+      message: { $ref: '#/components/messages/ResponseEvaluated' }
 
 components:
   messages:
@@ -219,6 +227,9 @@ components:
     FaceEmbedded:
       name: FaceEmbedded
       payload: { $ref: '#/components/schemas/FaceEmbedded' }
+    ResponseEvaluated:
+      name: ResponseEvaluated
+      payload: { $ref: '#/components/schemas/ResponseEvaluated' }
 
   schemas:
     MetaChannel:
@@ -558,3 +569,47 @@ components:
         det_score: { type: number, minimum: 0, maximum: 1 }
         size_px: { type: integer }
         blur_var: { type: number }
+    ResponseEvaluated:
+      type: object
+      description: >-
+        Veredicto del evaluador de respuestas del chatbot (ADR-0022). Solo scores, referencias y
+        contadores: el texto de la conversación permanece en la memoria de conversación (ADR-0015)
+        con su retención; este evento es apto para el plano de observabilidad (A04/A09).
+      required: [event_id, conversation_key, turn_id, verdict, mode, attempt]
+      properties:
+        event_id: { type: string, format: uuid }
+        conversation_key:
+          type: string
+          description: 'sha256(bot_id | channel | contact_ref) — clave de sesión (ADR-0015), no reversible.'
+        turn_id:
+          type: string
+          description: 'Identificador del turno del asistente evaluado.'
+        verdict:
+          type: string
+          enum: [pass, fail, fallback, skipped]
+          description: 'skipped = pass-through por fallo/presupuesto del evaluador (RF-EV-10).'
+        scores:
+          type: object
+          description: 'Scores normalizados por dimensión; ausentes si la etapa no corrió.'
+          properties:
+            adequacy: { type: number, minimum: 0, maximum: 1 }
+            relevance: { type: number, minimum: 0, maximum: 1 }
+            redundancy: { type: number, minimum: 0, maximum: 1 }
+        reasons:
+          type: array
+          items:
+            type: string
+            enum: [off_intent, low_relevance, semantic_repeat, reasks_known_field, format_error, judge_unavailable, budget_exceeded]
+          description: 'Causas codificadas del fail; sin texto libre para impedir fuga de PII.'
+        stages_run:
+          type: array
+          items: { type: string, enum: [deterministic, redundancy, judge] }
+        attempt:
+          type: integer
+          minimum: 0
+          maximum: 2
+          description: 'Nº de regeneración a la que corresponde este veredicto (0 = primera respuesta).'
+        mode:
+          type: string
+          enum: [enforce, shadow]
+        evaluated_at: { type: string, format: date-time }
