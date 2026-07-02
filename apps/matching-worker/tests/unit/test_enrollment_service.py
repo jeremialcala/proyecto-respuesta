@@ -202,17 +202,47 @@ def _resolve(dis="dis_fixed", **payload):
             "payload": {"disambiguation_id": dis, **payload}}
 
 
-def test_resolved_enrolls_selected_and_purges_all_crops():
+def test_resolved_enrolls_and_asks_other_faces(_kept="vault://crop/0"):
+    # ADR-0021: enrola al elegido, purga SOLO su recorte y consulta por los otros rostros (no purga aún).
     pend = FakePending()
     svc, d = _svc([_face(emb=(1.0, 0.0), x1=0), _face(emb=(0.0, 1.0), x1=300)], pending=pend)
     svc.on_report_ingested(_ingested())
     svc.on_disambiguation_resolved(_resolve(selected_index=1))
-    assert d["store"].refs == [("ent_1", (0.0, 1.0))]     # solo el elegido
-    assert set(d["media"].deleted) == {"vault://crop/0", "vault://crop/1"}  # purga todos
-    assert "dis_fixed" in d["pending"].resolved
-    assert "entity.enrolled" in d["bus"].types()
-    # el cierre usa la foto original del reporte (ADR-0020), no el recorte ya purgado
+    assert d["store"].refs == [("ent_1", (0.0, 1.0))]        # solo el elegido
+    assert set(d["media"].deleted) == {"vault://crop/1"}     # solo el recorte del elegido
+    assert "dis_fixed" not in d["pending"].resolved           # sigue en consulta (awaiting_others)
+    req = d["bus"].payload("other.faces.requested")
+    assert req["origin_report_id"] == "rep_1" and req["origin_entity_id"] == "ent_1"
+    assert req["faces"] == [{"index": 0, "crop_ref": _kept}]  # el rostro restante conservado
     assert d["bus"].payload("entity.enrolled")["media_ref"] == "vault://m/1"
+
+
+def _other_resolved(confirmed, dis="dis_fixed", eid="ofr1"):
+    return {"event_id": eid, "event_type": "other.faces.resolved",
+            "payload": {"disambiguation_id": dis, "confirmed_indices": confirmed}}
+
+
+def test_other_faces_resolved_purges_non_confirmed_keeps_confirmed():
+    rev = FakeRevoker()
+    svc, d = _svc([_face(emb=(1.0, 0.0), x1=0), _face(emb=(0.0, 1.0), x1=300),
+                   _face(emb=(0.5, 0.5), x1=600)], revoker=rev)
+    svc.on_report_ingested(_ingested())
+    svc.on_disambiguation_resolved(_resolve(selected_index=0))   # elige 0; quedan 1 y 2 en consulta
+    svc.on_other_faces_resolved(_other_resolved(confirmed=[1]))   # confirma solo el índice 1
+    # se purga el NO confirmado (índice 2); el confirmado (1) queda para el reporte derivado
+    assert "vault://crop/2" in d["media"].deleted and "vault://crop/1" not in d["media"].deleted
+    assert rev.calls[-1] == ("rep_1", ["vault://crop/2"])
+    assert "dis_fixed" in d["pending"].resolved
+
+
+def test_other_faces_resolved_none_purges_all_remaining():
+    rev = FakeRevoker()
+    svc, d = _svc([_face(emb=(1.0, 0.0), x1=0), _face(emb=(0.0, 1.0), x1=300)], revoker=rev)
+    svc.on_report_ingested(_ingested())
+    svc.on_disambiguation_resolved(_resolve(selected_index=1))   # queda el índice 0 en consulta
+    svc.on_other_faces_resolved(_other_resolved(confirmed=[]))    # ninguno → purga el restante
+    assert "vault://crop/0" in d["media"].deleted
+    assert rev.calls[-1] == ("rep_1", ["vault://crop/0"])
 
 
 def test_none_of_these_fails_and_purges():
@@ -268,14 +298,14 @@ def test_missing_entity_or_media_is_ignored():
     assert d["bus"].events == []
 
 
-# --- revocación de concesiones del media-gateway al purgar (ADR-0016 §6 / ADR-0017) ---
-def test_resolved_revokes_grants_by_report_id():
+# --- revocación de concesiones del media-gateway al purgar (ADR-0016 §6 / ADR-0017 / ADR-0021) ---
+def test_resolved_with_others_defers_revoke_until_other_faces_resolved():
+    # ADR-0021: al elegir con rostros restantes NO se revoca todavía (se difiere a other.faces.resolved).
     rev = FakeRevoker()
     svc, d = _svc([_face(emb=(1.0, 0.0), x1=0), _face(emb=(0.0, 1.0), x1=300)], revoker=rev)
     svc.on_report_ingested(_ingested())          # report_id="rep_1"
     svc.on_disambiguation_resolved(_resolve(selected_index=1))
-    # un lote por report_id, con los crop_refs purgados
-    assert rev.calls == [("rep_1", ["vault://crop/0", "vault://crop/1"])]
+    assert rev.calls == []                        # sin revoke inmediato: hay ventana de consulta
 
 
 def test_none_of_these_revokes_grants():
@@ -299,10 +329,11 @@ def test_expired_on_resolve_revokes_grants():
 
 
 def test_no_revoker_configured_still_purges_crops():
-    # Sin revoker (media_gateway_url no configurada): la purga de recortes sigue ocurriendo.
+    # Sin revoker (media_gateway_url no configurada): la purga de recortes sigue ocurriendo (no crashea).
     svc, d = _svc([_face(emb=(1.0, 0.0), x1=0), _face(emb=(0.0, 1.0), x1=300)])
     svc.on_report_ingested(_ingested())
-    svc.on_disambiguation_resolved(_resolve(selected_index=1))
+    svc.on_disambiguation_resolved(_resolve(selected_index=1))   # purga el recorte del elegido
+    svc.on_other_faces_resolved(_other_resolved(confirmed=[]))    # ninguno → purga el restante
     assert set(d["media"].deleted) == {"vault://crop/0", "vault://crop/1"}
 
 

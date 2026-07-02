@@ -15,6 +15,7 @@ import logging
 import math
 import time
 import uuid
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional
 
@@ -86,7 +87,7 @@ class EnrollmentService:
 
     def _enroll(self, entity_id: str, face: FaceMap, report_id: Optional[str],
                 source: str, reporter: Optional[dict] = None,
-                media_ref: Optional[str] = None) -> None:
+                media_ref: Optional[str] = None, summary: Optional[dict] = None) -> None:
         self._store.add_reference(entity_id, face.embedding)   # upsert por entity_id (idempotente)
         self._index.rebuild_from(self._store)                  # refresca el ANN desde pgvector
         payload = {
@@ -97,6 +98,12 @@ class EnrollmentService:
             "det_score": face.det_score,
             "source": source,
         }
+        # Resumen del reporte (ADR-0020): el chatbot arma el cierre con estos datos reales (no del perfil
+        # de sesión, que puede estar vacío para un reporte derivado). Campos ausentes se omiten.
+        for k in ("subject_name", "id_type", "id_number", "location"):
+            v = (summary or {}).get(k)
+            if v:
+                payload[k] = v
         payload.update(_reporter_fields(reporter))   # identidad para avisar al reportante (ADR-0016)
         self._bus.publish("entity.enrolled", payload)
         log.info("✓ enrolado entity_id=%s det=%.2f size=%dpx dim=%d (source=%s) → entity.enrolled",
@@ -147,6 +154,7 @@ class EnrollmentService:
         conversation_key = p.get("conversation_key")
         reporter = {"bot_id": p.get("bot_id", ""), "channel": p.get("channel", ""),
                     "contact_ref": p.get("contact_ref", "")}
+        summary = {k: p.get(k) for k in ("subject_name", "id_type", "id_number", "location")}
         if not entity_id or not media_ref:
             log.warning("report.ingested sin entity_id/media_ref; se ignora (event_id=%s)",
                         envelope.get("event_id"))
@@ -173,7 +181,7 @@ class EnrollmentService:
             return
         if len(faces) == 1:
             self._enroll(entity_id, faces[0], report_id, "report.ingested", reporter,
-                         media_ref=media_ref)
+                         media_ref=media_ref, summary=summary)
             log.info("  ↳ enrolamiento completo en %.0f ms total", (time.monotonic() - t0) * 1000)
             return
 
@@ -230,8 +238,8 @@ class EnrollmentService:
             # Nunca existió o ya fue purgado por expiración → pide reenviar la foto.
             self._fail(None, None, "expired", None)
             return
-        if pending.status == "resolved":
-            return  # idempotencia: resolved duplicado es no-op
+        if pending.status in ("resolved", "awaiting_others"):
+            return  # idempotencia: resolved duplicado (o ya en consulta de otros rostros) es no-op
 
         all_crops = [f.crop_ref for f in pending.faces if f.crop_ref]
         reporter = pending.reporter
@@ -264,8 +272,55 @@ class EnrollmentService:
             pending.report_id, "face.disambiguation.resolved", reporter,
             media_ref=pending.media_ref,
         )
-        self._purge(pending, all_crops)                # minimización: purga recortes + revoca concesiones
+        # ADR-0021: en vez de purgar de inmediato, si quedan OTROS rostros con recorte, se pregunta al
+        # reportante si también los reportará (ventana de consulta). El recorte del elegido sí se purga
+        # (su reporte usa la foto original, no el recorte). Sin otros rostros → purga como ADR-0016.
+        others = [f for f in pending.faces if f.index != selected and f.crop_ref]
+        if others:
+            self._media.delete_crops([chosen.crop_ref] if chosen.crop_ref else [])
+            # El pendiente pasa a contener SOLO los rostros bajo consulta (excluye el ya enrolado), así
+            # la purga posterior de los no confirmados no reintenta el recorte del elegido.
+            self._pending.save(replace(pending, status="awaiting_others", faces=tuple(others)))
+            self._publish_other_faces_requested(pending, others, reporter)
+        else:
+            self._purge(pending, all_crops)            # minimización: purga recortes + revoca concesiones
+            self._pending.mark_resolved(disambiguation_id)
+
+    def _publish_other_faces_requested(self, pending: PendingEnrollment,
+                                       others: list[PendingFace], reporter: Optional[dict]) -> None:
+        """Consulta al reportante por los otros rostros detectados (ADR-0021 RF-21)."""
+        payload = {
+            "disambiguation_id": pending.disambiguation_id,
+            "origin_report_id": pending.report_id,
+            "origin_entity_id": pending.entity_id,
+            "faces": [{"index": f.index, "crop_ref": f.crop_ref} for f in others],
+        }
+        payload.update(_reporter_fields(reporter))
+        self._bus.publish("other.faces.requested", payload)
+        log.info("? otros rostros: consulta dis=%s rostros=%d", pending.disambiguation_id, len(others))
+
+    # --- other.faces.resolved (ADR-0021): purga los rostros NO confirmados; los confirmados los
+    # promueve el chatbot con un reporte derivado (report.received con media_ref=crop). ---
+    def on_other_faces_resolved(self, envelope: dict) -> None:
+        if self._seen_before(envelope):
+            log.info("other.faces.resolved duplicado event_id=%s → no-op", envelope.get("event_id"))
+            return
+        self._handle_other_faces_resolved(envelope)
+        self._mark_done(envelope)
+
+    def _handle_other_faces_resolved(self, envelope: dict) -> None:
+        p = envelope.get("payload", {}) or {}
+        disambiguation_id = p.get("disambiguation_id")
+        pending = self._pending.get(disambiguation_id) if disambiguation_id else None
+        if pending is None or pending.status == "resolved":
+            return  # inexistente/purgado o ya resuelto → idempotente
+        confirmed = set(p.get("confirmed_indices", []) or [])
+        # Purga TODO recorte no confirmado; los confirmados quedan (los promueve el reporte derivado).
+        to_purge = [f.crop_ref for f in pending.faces if f.crop_ref and f.index not in confirmed]
+        self._purge(pending, to_purge)
         self._pending.mark_resolved(disambiguation_id)
+        log.info("otros rostros resueltos dis=%s confirmados=%s purgados=%d",
+                 disambiguation_id, sorted(confirmed), len(to_purge))
 
     def _iso_now(self) -> str:
         return _iso(self._now())

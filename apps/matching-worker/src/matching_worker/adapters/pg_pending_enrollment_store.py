@@ -21,9 +21,13 @@ CREATE TABLE IF NOT EXISTS pending_enrollments (
     reporter          jsonb,
     status            text NOT NULL DEFAULT 'pending',
     created_at        text NOT NULL,
-    expires_at        text NOT NULL
+    expires_at        text NOT NULL,
+    media_ref         text
 );
 CREATE INDEX IF NOT EXISTS pending_enrollments_expires_idx ON pending_enrollments(expires_at);
+-- Idempotente: alinea tablas ya creadas. `media_ref` (foto original) es imprescindible para el cierre
+-- tipo imagen al resolver la desambiguación (ADR-0020); sin él, el cierre degradaba a texto.
+ALTER TABLE pending_enrollments ADD COLUMN IF NOT EXISTS media_ref text;
 """
 
 
@@ -63,22 +67,26 @@ class PgPendingEnrollmentStore:
         self._ensure().execute(_DDL)
 
     def save(self, pending: PendingEnrollment) -> None:
+        # DO UPDATE (no DO NOTHING): la transición a `awaiting_others` (ADR-0021) actualiza status/faces
+        # sobre el mismo disambiguation_id; con DO NOTHING esos cambios se perdían. La reentrega del
+        # report.ingested ya está deduplicada aguas arriba por event_id (ADR-0018).
         self._ensure().execute(
             """INSERT INTO pending_enrollments
                  (disambiguation_id, entity_id, report_id, conversation_key, faces, reporter,
-                  status, created_at, expires_at)
-               VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s)
-               ON CONFLICT (disambiguation_id) DO NOTHING""",
+                  status, created_at, expires_at, media_ref)
+               VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s)
+               ON CONFLICT (disambiguation_id) DO UPDATE SET
+                  status = EXCLUDED.status, faces = EXCLUDED.faces, media_ref = EXCLUDED.media_ref""",
             (pending.disambiguation_id, pending.entity_id, pending.report_id,
              pending.conversation_key, _faces_to_json(pending.faces),
              json.dumps(pending.reporter) if pending.reporter else None,
-             pending.status, pending.created_at, pending.expires_at),
+             pending.status, pending.created_at, pending.expires_at, pending.media_ref),
         )
 
     def get(self, disambiguation_id: str) -> Optional[PendingEnrollment]:
         cur = self._ensure().execute(
             """SELECT disambiguation_id, entity_id, report_id, conversation_key, faces, reporter,
-                      status, created_at, expires_at
+                      status, created_at, expires_at, media_ref
                FROM pending_enrollments WHERE disambiguation_id = %s""",
             (disambiguation_id,))
         row = cur.fetchone()
@@ -88,7 +96,7 @@ class PgPendingEnrollmentStore:
         return PendingEnrollment(
             disambiguation_id=row[0], entity_id=row[1], report_id=row[2],
             conversation_key=row[3], faces=_faces_from_json(row[4]), reporter=reporter,
-            status=row[6], created_at=row[7], expires_at=row[8])
+            status=row[6], created_at=row[7], expires_at=row[8], media_ref=row[9])
 
     def mark_resolved(self, disambiguation_id: str) -> None:
         self._ensure().execute(

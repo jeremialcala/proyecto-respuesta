@@ -70,6 +70,11 @@ class SessionProfile:
     # usuario se interpreta como la elección del rostro, no como conversación normal.
     pending_disambiguation_id: Optional[str] = None
     pending_faces_count: int = 0
+    # Reporte derivado de otros rostros (ADR-0021 RF-21): si está activo, el mensaje del usuario avanza
+    # la máquina de consentimiento+captura, no la conversación normal. Estructura:
+    # {disambiguation_id, origin_report_id, origin_entity_id, queue:[{index,crop_ref}],
+    #  current:{crop_ref, subject_name, id_type, id_number}, step: select|consent|name|id_type|id_number}
+    derived_flow: Optional[dict] = None
 
     @property
     def report_complete(self) -> bool:

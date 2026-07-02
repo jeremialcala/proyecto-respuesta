@@ -87,6 +87,9 @@ class WorkerConfig:
     entity_enrolled_topic_arn: str = ""            # SNS: entity.enrolled
     enrollment_failed_topic_arn: str = ""          # SNS: enrollment.failed
     disambiguation_requested_topic_arn: str = ""   # SNS: face.disambiguation.requested
+    # --- reporte derivado de otros rostros (ADR-0021 RF-21) ---
+    other_faces_requested_topic_arn: str = ""      # SNS: other.faces.requested (→ chatbot)
+    other_faces_resolved_queue_url: str = ""       # SQS: other.faces.resolved (del chatbot)
     media_bucket: str = "respuesta-media"          # bóveda S3 (ADR-0005/0008)
     crops_bucket: str = ""                          # recortes efímeros; por defecto = media_bucket
     s3_sse: str = "aws:kms"                          # "" en dev con MinIO (sin KES no acepta SSE-KMS)
@@ -115,6 +118,8 @@ class WorkerConfig:
             entity_enrolled_topic_arn=os.getenv("SNS_ENTITY_ENROLLED_ARN", ""),
             enrollment_failed_topic_arn=os.getenv("SNS_ENROLLMENT_FAILED_ARN", ""),
             disambiguation_requested_topic_arn=os.getenv("SNS_FACE_DISAMBIGUATION_REQUESTED_ARN", ""),
+            other_faces_requested_topic_arn=os.getenv("SNS_OTHER_FACES_REQUESTED_ARN", ""),
+            other_faces_resolved_queue_url=os.getenv("SQS_OTHER_FACES_RESOLVED_URL", ""),
             media_bucket=media_bucket,
             crops_bucket=os.getenv("CROPS_BUCKET", media_bucket),
             s3_sse=os.getenv("S3_SSE", "aws:kms"),

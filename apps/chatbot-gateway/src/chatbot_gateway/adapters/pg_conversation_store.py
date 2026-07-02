@@ -40,7 +40,8 @@ CREATE INDEX IF NOT EXISTS chat_turns_recent ON chat_turns (conv_key, seq DESC);
 # guardar/cargar entre turnos. `last_closed_ref` reemplaza al antiguo `completion_notified`.
 _PROFILE_FIELDS = ("declared_name", "intention", "subject_name", "id_type", "id_number",
                    "location", "notes", "turn_count", "report_emitted", "last_closed_ref",
-                   "photo_retry_count", "pending_disambiguation_id", "pending_faces_count")
+                   "photo_retry_count", "pending_disambiguation_id", "pending_faces_count",
+                   "derived_flow")
 
 
 def _profile_to_json(p: SessionProfile) -> str:

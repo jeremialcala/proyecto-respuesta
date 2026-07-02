@@ -39,31 +39,36 @@ class RedisCorrelationStore:
             log.warning("no se pudo recordar media de %s (Redis no disponible)", contact_ref)
 
     def get_media(self, contact_ref: str) -> Optional[str]:
+        """Consumo ÚNICO: lee y BORRA (GETDEL). Así una foto se empareja con un solo reporte y no se
+        reutiliza en reportes posteriores del mismo contacto (evita desambiguación/enrolamiento doble)."""
         if not contact_ref:
             return None
         try:
-            v = self._ensure().get(self._mk("media", contact_ref))
+            v = self._ensure().getdel(self._mk("media", contact_ref))
             return v.decode() if v else None
         except Exception:
             return None
 
     def remember_report(self, contact_ref: str, report_id: str, entity_id: str,
-                        reporter: Optional[dict] = None) -> None:
+                        reporter: Optional[dict] = None, summary: Optional[dict] = None) -> None:
         if not contact_ref:
             return
         record = {"report_id": report_id, "entity_id": entity_id,
                   "bot_id": (reporter or {}).get("bot_id", ""),
-                  "channel": (reporter or {}).get("channel", "")}
+                  "channel": (reporter or {}).get("channel", ""),
+                  "summary": summary or {}}   # resumen para el cierre si la foto llega después (ADR-0020)
         try:
             self._ensure().setex(self._mk("report", contact_ref), self._ttl, json.dumps(record))
         except Exception:
             log.warning("no se pudo recordar reporte de %s (Redis no disponible)", contact_ref)
 
     def get_report(self, contact_ref: str) -> Optional[dict]:
+        """Consumo ÚNICO: lee y BORRA (GETDEL). Un reporte en espera se vincula a una sola foto; una
+        reentrega de media.stored ya no vuelve a disparar el enrolamiento (idempotencia de correlación)."""
         if not contact_ref:
             return None
         try:
-            v = self._ensure().get(self._mk("report", contact_ref))
+            v = self._ensure().getdel(self._mk("report", contact_ref))
             return json.loads(v) if v else None
         except Exception:
             return None

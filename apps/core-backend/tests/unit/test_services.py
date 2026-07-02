@@ -27,16 +27,17 @@ class FakeCorrelation:
             self.media[contact_ref] = media_ref
 
     def get_media(self, contact_ref):
-        return self.media.get(contact_ref)
+        return self.media.pop(contact_ref, None)      # consumo único (GETDEL), como el adaptador Redis
 
-    def remember_report(self, contact_ref, report_id, entity_id, reporter=None):
+    def remember_report(self, contact_ref, report_id, entity_id, reporter=None, summary=None):
         if contact_ref:
             self.report[contact_ref] = {"report_id": report_id, "entity_id": entity_id,
                                         "bot_id": (reporter or {}).get("bot_id", ""),
-                                        "channel": (reporter or {}).get("channel", "")}
+                                        "channel": (reporter or {}).get("channel", ""),
+                                        "summary": summary or {}}
 
     def get_report(self, contact_ref):
-        return self.report.get(contact_ref)
+        return self.report.pop(contact_ref, None)     # consumo único (GETDEL)
 
 
 def _wire():
@@ -172,6 +173,53 @@ def test_media_stored_without_report_does_not_emit():
     intake.on_media_stored(_media_env(contact_ref="wa:c3"))
     assert all(t != "report.ingested" for t, _ in pub.events)
     assert corr.get_media("wa:c3")                              # recordada para cuando llegue el reporte
+
+
+def test_report_ingested_carries_summary_for_closing():
+    """El resumen (nombre/doc/ubicación) viaja en report.ingested → cierre con datos reales (ADR-0020)."""
+    cfg, stores, pub, corr, intake = _wire_corr()
+    intake.handle(_report_env(contact_ref="wa:s", subject_name="Ana Gómez", id_type="V",
+                              id_number="123", ultima_ubicacion="Valencia", media_ref="s3://b/m/s",
+                              location="Valencia"))
+    pl = _ingested(pub)["payload"]
+    assert pl["subject_name"] == "Ana Gómez" and pl["id_type"] == "V" and pl["id_number"] == "123"
+    assert pl["location"] == "Valencia"
+
+
+def test_summary_survives_report_before_photo():
+    """El reporte llega sin foto; al llegar la foto, el report.ingested re-emitido conserva el resumen."""
+    cfg, stores, pub, corr, intake = _wire_corr()
+    intake.handle(_report_env(contact_ref="wa:sp", subject_name="Beto", id_type="V", id_number="9",
+                              location="Maracay"))
+    intake.on_media_stored(_media_env(contact_ref="wa:sp", media_ref="s3://b/m/sp"))
+    linked = next(e for t, e in pub.events
+                  if t == "report.ingested" and e["payload"].get("media_ref") == "s3://b/m/sp")
+    assert linked["payload"]["subject_name"] == "Beto" and linked["payload"]["location"] == "Maracay"
+
+
+def test_one_photo_links_to_a_single_report_no_duplicate():
+    """Multi-reporte del mismo contacto: una foto se empareja con UN solo reporte (no dispara doble
+    desambiguación/enrolamiento). Regresión del cruce foto↔reporte por contacto."""
+    cfg, stores, pub, corr, intake = _wire_corr()
+    # dos reportes del mismo contacto SIN foto (se recuerdan en orden)
+    intake.handle(_report_env(contact_ref="wa:m", subject_name="Maria"))
+    intake.handle(_report_env(contact_ref="wa:m", subject_name="Arelis"))
+    # llega UNA foto → debe vincularse a UN solo reporte
+    intake.on_media_stored(_media_env(contact_ref="wa:m", media_ref="s3://b/m/one"))
+    with_media = [e for t, e in pub.events
+                  if t == "report.ingested" and e["payload"]["media_ref"] == "s3://b/m/one"]
+    assert len(with_media) == 1                                # la foto NO se reutiliza en ambos reportes
+
+
+def test_media_redelivery_does_not_reingest():
+    """Reentrega de media.stored (at-least-once): el reporte ya fue consumido → no re-emite enrolamiento."""
+    cfg, stores, pub, corr, intake = _wire_corr()
+    intake.handle(_report_env(contact_ref="wa:r"))                     # sin foto → recordado
+    intake.on_media_stored(_media_env(contact_ref="wa:r", media_ref="s3://b/m/r"))
+    intake.on_media_stored(_media_env(contact_ref="wa:r", media_ref="s3://b/m/r"))   # redelivery
+    linked = [e for t, e in pub.events
+              if t == "report.ingested" and e["payload"]["media_ref"] == "s3://b/m/r"]
+    assert len(linked) == 1                                    # una sola vinculación, no doble
 
 
 def test_payload_media_ref_takes_precedence():

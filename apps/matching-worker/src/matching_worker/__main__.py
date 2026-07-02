@@ -63,6 +63,7 @@ def build_enrollment_service(cfg: WorkerConfig):
         "entity.enrolled": cfg.entity_enrolled_topic_arn,
         "enrollment.failed": cfg.enrollment_failed_topic_arn,
         "face.disambiguation.requested": cfg.disambiguation_requested_topic_arn,
+        "other.faces.requested": cfg.other_faces_requested_topic_arn,
     }, cfg.aws_region, producer=cfg.producer)
     face_mapper = build_face_mapper(cfg)
     media = VaultMediaGateway(cfg.aws_region, cfg.crops_bucket, sse=cfg.s3_sse)
@@ -83,6 +84,9 @@ def build_consumers(cfg: WorkerConfig, service: EnrollmentService) -> list[SqsCo
         SqsConsumer(cfg.disambiguation_resolved_queue_url, cfg.aws_region,
                     service.on_disambiguation_resolved, cfg.max_messages, cfg.wait_time_seconds,
                     name="face.disambiguation.resolved"),
+        SqsConsumer(cfg.other_faces_resolved_queue_url, cfg.aws_region,
+                    service.on_other_faces_resolved, cfg.max_messages, cfg.wait_time_seconds,
+                    name="other.faces.resolved"),
     ]
 
 

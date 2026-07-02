@@ -167,6 +167,9 @@ services:
       # Desambiguación multi-rostro (ADR-0016): consume requested, publica resolved
       SQS_FACE_DISAMBIGUATION_REQUESTED_URL: http://localstack:4566/000000000000/face-disambiguation-requested
       SQS_DISAMBIGUATION_RESOLVED_URL: http://localstack:4566/000000000000/face-disambiguation-resolved
+      # Reporte derivado de otros rostros (ADR-0021): consume requested, publica resolved
+      SQS_OTHER_FACES_REQUESTED_URL: http://localstack:4566/000000000000/other-faces-requested
+      SQS_OTHER_FACES_RESOLVED_URL: http://localstack:4566/000000000000/other-faces-resolved
       SNS_NOTIFICATION_SENT_ARN: arn:aws:sns:sa-east-1:000000000000:notification-sent   # auditoría ADR-0020 RF-22
       OLLAMA_URL: ${OLLAMA_URL:-http://llm:11434}   # servicio llm del compose (perfil llm). Host: http://host.docker.internal:11434
       LLM_MODEL: ${LLM_MODEL:-gemma3:27b}
@@ -304,6 +307,9 @@ services:
       SNS_ENTITY_ENROLLED_ARN: arn:aws:sns:sa-east-1:000000000000:entity-enrolled
       SNS_ENROLLMENT_FAILED_ARN: arn:aws:sns:sa-east-1:000000000000:enrollment-failed
       SNS_FACE_DISAMBIGUATION_REQUESTED_ARN: arn:aws:sns:sa-east-1:000000000000:face-disambiguation-requested
+      # Reporte derivado de otros rostros (ADR-0021): publica requested, consume resolved
+      SNS_OTHER_FACES_REQUESTED_ARN: arn:aws:sns:sa-east-1:000000000000:other-faces-requested
+      SQS_OTHER_FACES_RESOLVED_URL: http://localstack:4566/000000000000/other-faces-resolved
       MEDIA_BUCKET: respuesta-media
       S3_SSE: ${S3_SSE:-}                             # dev/MinIO sin SSE-KMS. Prod: aws:kms
     volumes:

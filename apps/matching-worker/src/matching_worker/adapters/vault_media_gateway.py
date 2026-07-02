@@ -50,8 +50,11 @@ class VaultMediaGateway:
         extra = {"ServerSideEncryption": self._sse} if self._sse else {}
         for blob in crops:
             key = f"{self._crops_prefix}/{uuid.uuid4().hex}.jpg"
+            # scan=clean en la metadata: el media-gateway es fail-closed y solo sirve objetos limpios.
+            # Sin esto, la miniatura de desambiguación y el cierre del reporte derivado (ADR-0021) darían
+            # 403 al descargarlos Meta (ADR-0017).
             s3.put_object(Bucket=self._crops_bucket, Key=key, Body=blob,
-                          ContentType="image/jpeg", **extra)
+                          ContentType="image/jpeg", Metadata={"scan": "clean"}, **extra)
             refs.append(f"s3://{self._crops_bucket}/{key}")
         return refs
 

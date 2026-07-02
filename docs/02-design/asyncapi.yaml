@@ -207,6 +207,12 @@ components:
     FaceDisambiguationResolved:
       name: FaceDisambiguationResolved
       payload: { $ref: '#/components/schemas/FaceDisambiguationResolved' }
+    OtherFacesRequested:
+      name: OtherFacesRequested
+      payload: { $ref: '#/components/schemas/OtherFacesRequested' }
+    OtherFacesResolved:
+      name: OtherFacesResolved
+      payload: { $ref: '#/components/schemas/OtherFacesResolved' }
     FaceExtractRequested:
       name: FaceExtractRequested
       payload: { $ref: '#/components/schemas/FaceExtractRequested' }
@@ -345,6 +351,12 @@ components:
         entity_id: { type: string }
         report_id: { type: string }
         media_ref: { type: string, description: 'Foto del reporte para el cierre tipo imagen (ADR-0020).' }
+        # Resumen del reporte (ADR-0020): el chatbot arma el cierre foto+resumen con estos datos reales,
+        # no con el perfil de sesión (que puede estar vacío para un reporte derivado, ADR-0021).
+        subject_name: { type: string }
+        id_type: { type: string }
+        id_number: { type: string }
+        location: { type: string }
         face_quality: { $ref: '#/components/schemas/FaceQuality' }
         det_score: { type: number, minimum: 0, maximum: 1 }
         source:
@@ -413,6 +425,31 @@ components:
           type: string
           enum: [none_of_these]
           description: 'El sujeto no está en la foto; pedir otra.'
+    OtherFacesRequested:
+      type: object
+      description: 'Tras desambiguar, consulta si los OTROS rostros detectados también se reportan (ADR-0021 RF-21).'
+      required: [disambiguation_id, faces]
+      properties:
+        disambiguation_id: { type: string }
+        origin_report_id: { type: string, description: 'Procedencia: reporte del que salió esta foto.' }
+        origin_entity_id: { type: string }
+        contact_ref: { type: string }
+        bot_id: { type: string }
+        channel: { type: string }
+        faces:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/PendingFaceRef' }
+    OtherFacesResolved:
+      type: object
+      description: 'Índices de rostros que el reportante SÍ reportará; el resto se purga (ADR-0021 §4).'
+      required: [disambiguation_id]
+      properties:
+        disambiguation_id: { type: string }
+        confirmed_indices:
+          type: array
+          items: { type: integer, minimum: 0 }
+          description: 'Índices originales confirmados. Vacío = ninguno → purga todo.'
     ReportRef:
       type: object
       required: [report_id, intention]
@@ -427,6 +464,11 @@ components:
         report_id: { type: string, format: uuid }
         entity_id: { type: string, format: uuid }
         media_ref: { type: string, description: Referencia en el almacén protegido. }
+        # Resumen del reporte para el cierre tipo imagen (ADR-0020): viaja hasta entity.enrolled para que
+        # el chatbot arme el resumen con datos REALES (no del perfil de sesión).
+        subject_name: { type: string }
+        id_type: { type: string }
+        id_number: { type: string }
         location: { type: string, description: 'Última ubicación conocida del sujeto (resumen de cierre, ADR-0020).' }
         contact_ref: { type: string, description: 'Reportante; permite avisarle al cerrar (ADR-0016).' }
         bot_id: { type: string }
@@ -477,8 +519,8 @@ components:
         opt_in: { type: boolean }
         purpose:
           type: string
-          enum: [ack, closing, better_photo, disambiguation]
-          description: 'Propósito de la notificación al reportante (ADR-0020 RF-22).'
+          enum: [ack, closing, better_photo, disambiguation, other_faces, derived_consent]
+          description: 'Propósito de la notificación al reportante (ADR-0020 RF-22 / ADR-0021).'
         contact_ref: { type: string, description: 'Destino (reportante); el esquema clúster usa opt_in.' }
         sent_at: { type: string, format: date-time }
     FaceExtractRequested:

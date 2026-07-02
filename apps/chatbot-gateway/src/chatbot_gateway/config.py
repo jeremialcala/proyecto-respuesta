@@ -15,6 +15,8 @@ class ChatbotConfig:
     enrollment_failed_queue_url: str = ""  # SQS: enrollment.failed (feedback de la foto, ADR-0016)
     disambiguation_requested_queue_url: str = ""   # SQS: face.disambiguation.requested (consumir)
     disambiguation_resolved_queue_url: str = ""    # SQS: face.disambiguation.resolved (publicar)
+    other_faces_requested_queue_url: str = ""      # SQS: other.faces.requested (consumir, ADR-0021)
+    other_faces_resolved_queue_url: str = ""       # SQS: other.faces.resolved (publicar, ADR-0021)
     notification_sent_topic_arn: str = ""          # SNS: notification.sent (auditoría, ADR-0020 RF-22)
     max_photo_retries: int = 3                     # fotos inservibles antes de derivar a coordinador (RF-19)
     ollama_url: str = "http://llm:11434"
@@ -42,6 +44,8 @@ class ChatbotConfig:
             enrollment_failed_queue_url=os.getenv("SQS_ENROLLMENT_FAILED_URL", ""),
             disambiguation_requested_queue_url=os.getenv("SQS_FACE_DISAMBIGUATION_REQUESTED_URL", ""),
             disambiguation_resolved_queue_url=os.getenv("SQS_DISAMBIGUATION_RESOLVED_URL", ""),
+            other_faces_requested_queue_url=os.getenv("SQS_OTHER_FACES_REQUESTED_URL", ""),
+            other_faces_resolved_queue_url=os.getenv("SQS_OTHER_FACES_RESOLVED_URL", ""),
             notification_sent_topic_arn=os.getenv("SNS_NOTIFICATION_SENT_ARN", ""),
             max_photo_retries=int(os.getenv("MAX_PHOTO_RETRIES", "3")),
             ollama_url=os.getenv("OLLAMA_URL", "http://llm:11434"),

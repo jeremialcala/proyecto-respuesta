@@ -16,7 +16,10 @@ class CoreConfig:
     outbound_reply_queue_url: str = ""     # SQS: outbound.reply (acuse al reportante, ADR-0020 RF-16)
     pgvector_dsn: str = ""                  # Postgres (reportes, entidades, auditoría)
     redis_url: str = "redis://localhost:6379/0"   # correlación foto↔reporte por contacto
-    correlation_ttl_seconds: int = 86400          # ventana para vincular foto y reporte (ADR-0015)
+    # Ventana CORTA para vincular foto↔reporte: la foto y su reporte son parte de UN mismo flujo y
+    # llegan con minutos de diferencia. Un TTL largo (24h) dejaba entradas obsoletas que se cruzaban con
+    # reportes posteriores del mismo contacto (foto vieja mostrada en una desambiguación que no aplica).
+    correlation_ttl_seconds: int = 1800           # 30 min (holgura para latencia del LLM)
     max_messages: int = 10
     wait_time_seconds: int = 20
     producer: str = "core-backend"
@@ -33,7 +36,7 @@ class CoreConfig:
             outbound_reply_queue_url=os.getenv("SQS_OUTBOUND_REPLY_URL", ""),
             pgvector_dsn=os.getenv("PGVECTOR_DSN", ""),
             redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-            correlation_ttl_seconds=int(os.getenv("CORRELATION_TTL_SECONDS", "86400")),
+            correlation_ttl_seconds=int(os.getenv("CORRELATION_TTL_SECONDS", "1800")),
             max_messages=int(os.getenv("SQS_MAX_MESSAGES", "10")),
             wait_time_seconds=int(os.getenv("SQS_WAIT_SECONDS", "20")),
         )

@@ -47,6 +47,7 @@ def build_service(cfg: ChatbotConfig, pub) -> ChatbotService:
                             timeout=cfg.ollama_timeout, keep_alive=cfg.ollama_keep_alive),
         reply_pub=pub, report_pub=pub, event_log=NoopEventLog(),
         conversations=store, embedder=embedder, resolved_pub=pub, notification_pub=notify_pub,
+        other_faces_pub=pub,
     )
 
 
@@ -68,6 +69,11 @@ def build_consumers(cfg: ChatbotConfig, service: ChatbotService) -> list[SqsCons
             SqsConsumer(cfg.disambiguation_requested_queue_url, cfg.aws_region,
                         service.on_face_disambiguation_requested,
                         cfg.max_messages, cfg.wait_time_seconds, name="face.disambiguation.requested"))
+    if cfg.other_faces_requested_queue_url:
+        consumers.append(
+            SqsConsumer(cfg.other_faces_requested_queue_url, cfg.aws_region,
+                        service.on_other_faces_requested,
+                        cfg.max_messages, cfg.wait_time_seconds, name="other.faces.requested"))
     return consumers
 
 
@@ -78,7 +84,8 @@ def main() -> None:
     )
     cfg = ChatbotConfig.from_env()
     pub = SqsPublisher(cfg.reply_queue_url, cfg.report_queue_url, cfg.aws_region,
-                       resolved_queue_url=cfg.disambiguation_resolved_queue_url)
+                       resolved_queue_url=cfg.disambiguation_resolved_queue_url,
+                       other_faces_resolved_queue_url=cfg.other_faces_resolved_queue_url)
     service = build_service(cfg, pub)
     consumers = build_consumers(cfg, service)
     threads = [threading.Thread(target=c.start, name=c._name, daemon=True) for c in consumers]

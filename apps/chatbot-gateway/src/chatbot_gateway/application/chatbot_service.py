@@ -18,7 +18,7 @@ from ..config import ChatbotConfig
 from ..domain import guardrails
 from ..domain.conversation import (ConversationContext, SessionProfile, Turn,
                                    conversation_key)
-from ..domain.disambiguation import parse_selection
+from ..domain.disambiguation import parse_multi_selection, parse_selection, parse_yes_no
 from ..domain.models import InputCategory, ReportDraft
 from .events import build_envelope
 from .ports import (BodyCipher, ConversationStore, Embedder, EventLog, LlmClient,
@@ -44,14 +44,19 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _closing_summary(profile) -> str:
-    """Resumen verificable del reporte para el cierre tipo imagen (ADR-0020 RF-17). Ausentes → 'no especificado'."""
-    doc = " ".join(x for x in (profile.id_type, profile.id_number) if x) or _NO_ESPECIFICADO
+def _closing_summary(profile, data: Optional[dict] = None) -> str:
+    """Resumen verificable del reporte para el cierre tipo imagen (ADR-0020 RF-17). Ausentes → 'no
+    especificado'. Prioriza `data` (datos REALES del reporte que llegan en entity.enrolled) sobre el
+    perfil de sesión, que puede estar vacío para un reporte derivado o ya reseteado (ADR-0021)."""
+    d = data or {}
+    pick = lambda field: d.get(field) or getattr(profile, field, None)
+    id_type, id_number = pick("id_type"), pick("id_number")
+    doc = " ".join(x for x in (id_type, id_number) if x) or _NO_ESPECIFICADO
     return ("Reporte completo. Esto fue lo que registramos:\n\n"
-            f"Nombre: {profile.subject_name or _NO_ESPECIFICADO}\n"
+            f"Nombre: {pick('subject_name') or _NO_ESPECIFICADO}\n"
             f"Documento de identidad: {doc}\n"
-            f"Dónde fue visto por última vez: {profile.location or _NO_ESPECIFICADO}\n"
-            f"Información adicional: {profile.notes or _NO_ESPECIFICADO}")
+            f"Dónde fue visto por última vez: {pick('location') or _NO_ESPECIFICADO}\n"
+            f"Información adicional: {pick('notes') or _NO_ESPECIFICADO}")
 # Feedback sobre la foto cuando el enrolamiento no pudo completarse (ADR-0016).
 _PHOTO_FEEDBACK = {
     "no_face": ("No pude reconocer un rostro en la foto. ¿Podrías enviar otra, de frente, "
@@ -60,6 +65,23 @@ _PHOTO_FEEDBACK = {
     "no_subject_in_photo": ("Entendido, la persona no estaba en esa foto. ¿Puedes enviarme otra?"),
     "expired": ("Pasó el tiempo para vincular la foto. Envíamela de nuevo, por favor."),
 }
+
+
+# Reporte derivado de otros rostros (ADR-0021 RF-21).
+_OTHER_FACES_PROMPT = (
+    "En la foto detecté a otras {n} persona(s), que te muestro numeradas. ¿A cuál(es) de ellas también "
+    "vas a reportar? Responde con los números (p. ej. «1 y 3»), o escribe «ninguno».")
+_OTHER_FACES_NONE = "Entendido. No reportaremos a las demás personas; sus imágenes se descartan."
+_CONSENT_PROMPT = (
+    "Para reportar a esta persona necesito tu consentimiento para procesar su foto y sus datos "
+    "(base legal de protección de datos). Si es un menor de edad, se requiere autorización de su "
+    "representante. ¿Confirmas que cuentas con ello? (sí/no)")
+_CONSENT_DECLINED = "De acuerdo, descartamos a esa persona. Seguimos con las demás si las hay."
+_ASK_NAME = "¿Cuál es el nombre completo de esta persona?"
+_ASK_ID_TYPE = "¿Qué tipo de documento tiene? (por ejemplo: cédula, pasaporte)"
+_ASK_ID_NUMBER = "¿Cuál es el número de documento?"
+_DERIVED_REGISTERED = "📝 Reporte de {name} registrado; te avisaremos al validarlo."
+_DERIVED_DONE = "Listo, no quedan más personas por reportar de esa foto. Gracias."
 
 
 def _disambiguation_prompt(n: int) -> str:
@@ -90,7 +112,7 @@ class ChatbotService:
     def __init__(self, cfg: ChatbotConfig, cipher: BodyCipher, llm: LlmClient,
                  reply_pub: ReplyPublisher, report_pub: ReportPublisher, event_log: EventLog,
                  conversations: ConversationStore, embedder: Embedder,
-                 resolved_pub=None, notification_pub=None) -> None:
+                 resolved_pub=None, notification_pub=None, other_faces_pub=None) -> None:
         self._cfg = cfg
         self._cipher = cipher
         self._llm = llm
@@ -101,6 +123,7 @@ class ChatbotService:
         self._embed = embedder
         self._resolved = resolved_pub   # publica face.disambiguation.resolved (ADR-0016)
         self._notify = notification_pub  # publica notification.sent (auditoría, ADR-0020 RF-22)
+        self._other_faces = other_faces_pub  # publica other.faces.resolved (ADR-0021 RF-21)
 
     def handle(self, inbound_text_envelope: dict) -> HandleResult:
         p = inbound_text_envelope.get("payload", {}) or {}
@@ -129,6 +152,10 @@ class ChatbotService:
         if ctx.profile.pending_disambiguation_id:
             return self._handle_disambiguation_reply(bot_id, channel, contact_ref, event_id,
                                                      user_text, ctx)
+
+        # --- reporte derivado en curso (ADR-0021): el mensaje avanza la máquina consentimiento+captura ---
+        if ctx.profile.derived_flow:
+            return self._handle_derived_reply(bot_id, channel, contact_ref, event_id, user_text, ctx)
 
         # --- riel de entrada ---
         screen = guardrails.screen_input(user_text)
@@ -196,13 +223,14 @@ class ChatbotService:
             return HandleResult(Outcome.REPLIED)   # idempotente ante redelivery del MISMO reporte (RF-23)
         event_id = envelope.get("event_id", "")
         media_ref = p.get("media_ref")
+        summary = _closing_summary(ctx.profile, p)   # datos del evento (reporte real) con fallback al perfil
         if media_ref:   # cierre tipo imagen: la foto del reporte (URL firmada al enviar) + resumen como caption
             self._publish_reply(bot_id, channel, contact_ref, event_id,
-                                _closing_summary(ctx.profile), kind="image", media_ref=media_ref,
+                                summary, kind="image", media_ref=media_ref,
                                 report_id=p.get("report_id"))
         else:           # sin foto referenciable: cierre en TEXTO con el mismo resumen (degradación, RF-17)
             self._publish_reply(bot_id, channel, contact_ref, event_id,
-                                _REPORT_COMPLETE + "\n\n" + _closing_summary(ctx.profile))
+                                _REPORT_COMPLETE + "\n\n" + summary)
         self._publish_notification(p.get("entity_id"), channel, contact_ref, "closing", event_id)
         # Resetea el reporte en curso (libera report_emitted para el siguiente) y marca este cierre como
         # ya notificado por su ref → el mismo contacto puede registrar otro reporte (ADR-0020, opción C).
@@ -270,6 +298,138 @@ class ChatbotService:
             profile, pending_disambiguation_id=None, pending_faces_count=0))
         return HandleResult(Outcome.DISAMBIGUATION_RESOLVED)
 
+    # --- reporte derivado de otros rostros (ADR-0021 RF-21) ---
+    def on_other_faces_requested(self, envelope: dict) -> HandleResult:
+        """Consulta al reportante por los otros rostros detectados y abre la máquina de captura."""
+        p = envelope.get("payload", {}) or {}
+        bot_id, channel, contact_ref = p.get("bot_id", ""), p.get("channel", ""), p.get("contact_ref", "")
+        faces = [f for f in (p.get("faces", []) or []) if f.get("crop_ref")]
+        if not contact_ref or not faces:
+            return HandleResult(Outcome.REPLIED)
+        key = conversation_key(bot_id, channel, contact_ref)
+        ctx = self._load_context(key, "")
+        event_id = envelope.get("event_id", "")
+        flow = {
+            "disambiguation_id": p.get("disambiguation_id"),
+            "origin_report_id": p.get("origin_report_id"),
+            "origin_entity_id": p.get("origin_entity_id"),
+            "faces": [{"index": f.get("index"), "crop_ref": f.get("crop_ref")} for f in faces],
+            "queue": [], "current": None, "step": "select",
+        }
+        self._publish_reply(bot_id, channel, contact_ref, event_id,
+                            _OTHER_FACES_PROMPT.format(n=len(faces)),
+                            media_refs=[f["crop_ref"] for f in flow["faces"]],
+                            report_id=p.get("origin_report_id"))
+        self._publish_notification(p.get("origin_entity_id"), channel, contact_ref, "other_faces", event_id)
+        self._convos.save_profile(key, replace(ctx.profile, derived_flow=flow))
+        return HandleResult(Outcome.REPLIED)
+
+    def _handle_derived_reply(self, bot_id, channel, contact_ref, event_id, user_text,
+                              ctx: ConversationContext) -> HandleResult:
+        """Avanza la máquina consentimiento+captura del reporte derivado según `derived_flow.step`."""
+        flow = dict(ctx.profile.derived_flow)
+        step = flow.get("step")
+
+        if step == "select":
+            sel = parse_multi_selection(user_text, len(flow["faces"]))
+            if sel.kind == "invalid":
+                self._publish_reply(bot_id, channel, contact_ref, event_id,
+                                    "No entendí. Dime los números (p. ej. «1 y 2»), o «ninguno».")
+                return HandleResult(Outcome.REPLIED)
+            if sel.kind == "none":
+                self._publish_other_faces_resolved(flow["disambiguation_id"], [])
+                self._publish_reply(bot_id, channel, contact_ref, event_id, _OTHER_FACES_NONE)
+                self._convos.save_profile(ctx.key, replace(ctx.profile, derived_flow=None))
+                return HandleResult(Outcome.REPLIED)
+            confirmed = [flow["faces"][i] for i in sel.indices]        # posición mostrada → rostro
+            self._publish_other_faces_resolved(flow["disambiguation_id"],
+                                               [f["index"] for f in confirmed])   # índice original
+            flow["queue"] = confirmed[1:]
+            flow["current"] = _new_derived_current(confirmed[0]["crop_ref"])
+            flow["step"] = "consent"
+            self._publish_reply(bot_id, channel, contact_ref, event_id, _CONSENT_PROMPT)
+            self._convos.save_profile(ctx.key, replace(ctx.profile, derived_flow=flow))
+            return HandleResult(Outcome.REPLIED)
+
+        if step == "consent":
+            yn = parse_yes_no(user_text)
+            if yn == "invalid":
+                self._publish_reply(bot_id, channel, contact_ref, event_id,
+                                    "¿Confirmas el consentimiento? Responde «sí» o «no».")
+                return HandleResult(Outcome.REPLIED)
+            if yn == "no":
+                self._publish_reply(bot_id, channel, contact_ref, event_id, _CONSENT_DECLINED)
+                return self._advance_or_finish(bot_id, channel, contact_ref, event_id, ctx, flow)
+            self._publish_notification(flow.get("origin_entity_id"), channel, contact_ref,
+                                       "derived_consent", event_id)
+            flow["step"] = "name"
+            self._publish_reply(bot_id, channel, contact_ref, event_id, _ASK_NAME)
+            self._convos.save_profile(ctx.key, replace(ctx.profile, derived_flow=flow))
+            return HandleResult(Outcome.REPLIED)
+
+        if step in ("name", "id_type", "id_number"):
+            field = {"name": "subject_name", "id_type": "id_type", "id_number": "id_number"}[step]
+            flow["current"][field] = user_text.strip()
+            if step == "name":
+                flow["step"] = "id_type"
+                self._publish_reply(bot_id, channel, contact_ref, event_id, _ASK_ID_TYPE)
+                self._convos.save_profile(ctx.key, replace(ctx.profile, derived_flow=flow))
+                return HandleResult(Outcome.REPLIED)
+            if step == "id_type":
+                flow["step"] = "id_number"
+                self._publish_reply(bot_id, channel, contact_ref, event_id, _ASK_ID_NUMBER)
+                self._convos.save_profile(ctx.key, replace(ctx.profile, derived_flow=flow))
+                return HandleResult(Outcome.REPLIED)
+            # id_number completo → promueve el recorte a reporte derivado (con procedencia)
+            cur = flow["current"]
+            self._publish_derived_report(bot_id, channel, contact_ref, event_id, flow, cur)
+            self._publish_reply(bot_id, channel, contact_ref, event_id,
+                                _DERIVED_REGISTERED.format(name=cur.get("subject_name") or "la persona"))
+            return self._advance_or_finish(bot_id, channel, contact_ref, event_id, ctx, flow,
+                                           outcome=Outcome.REPLIED_WITH_REPORT)
+
+        # step desconocido → cierra el flujo de forma segura
+        self._convos.save_profile(ctx.key, replace(ctx.profile, derived_flow=None))
+        return HandleResult(Outcome.REPLIED)
+
+    def _advance_or_finish(self, bot_id, channel, contact_ref, event_id, ctx, flow,
+                           outcome=Outcome.REPLIED) -> HandleResult:
+        """Pasa al siguiente rostro de la cola (nuevo consentimiento) o cierra el flujo derivado."""
+        queue = flow.get("queue", []) or []
+        if queue:
+            flow2 = {**flow, "queue": queue[1:],
+                     "current": _new_derived_current(queue[0]["crop_ref"]), "step": "consent"}
+            self._publish_reply(bot_id, channel, contact_ref, event_id, _CONSENT_PROMPT)
+            self._convos.save_profile(ctx.key, replace(ctx.profile, derived_flow=flow2))
+        else:
+            self._publish_reply(bot_id, channel, contact_ref, event_id, _DERIVED_DONE)
+            self._convos.save_profile(ctx.key, replace(ctx.profile, derived_flow=None))
+        return HandleResult(outcome)
+
+    def _publish_other_faces_resolved(self, disambiguation_id, confirmed_indices) -> None:
+        if self._other_faces is None:
+            return
+        self._other_faces.publish_other_faces_resolved(build_envelope(
+            "other.faces.resolved",
+            {"disambiguation_id": disambiguation_id, "confirmed_indices": list(confirmed_indices)},
+            self._cfg.producer))
+
+    def _publish_derived_report(self, bot_id, channel, contact_ref, event_id, flow, current) -> None:
+        """Emite report.received del derivado: el recorte guardado es su foto de referencia; la
+        procedencia (origin_*) queda en attributes para trazabilidad y merge reversible (ADR-0021 §6)."""
+        self._report.publish_report(build_envelope("report.received", {
+            "intention": "desaparecido",
+            "subject_name": current.get("subject_name"),
+            "id_type": current.get("id_type"),
+            "id_number": current.get("id_number"),
+            "media_ref": current.get("crop_ref"),
+            "origin_report_id": flow.get("origin_report_id"),
+            "origin_entity_id": flow.get("origin_entity_id"),
+            "source": f"chatbot:{channel}:derived",
+            "contact_ref": contact_ref, "bot_id": bot_id, "channel": channel,
+        }, self._cfg.producer))
+        self._log.record_action(event_id, "derived_report_captured", "OK", current.get("subject_name") or "")
+
     # --- contexto ---
     def _load_context(self, key: str, query_text: str) -> ConversationContext:
         q = self._embed.embed(query_text)
@@ -327,6 +487,11 @@ class ChatbotService:
             "channel": channel,
         }, self._cfg.producer))
         self._log.record_action(event_id, "report_captured", "OK", profile.intention or "")
+
+
+def _new_derived_current(crop_ref: str) -> dict:
+    """Estado de captura de un rostro derivado en curso (ADR-0021)."""
+    return {"crop_ref": crop_ref, "subject_name": None, "id_type": None, "id_number": None}
 
 
 def _bump(profile: SessionProfile) -> SessionProfile:

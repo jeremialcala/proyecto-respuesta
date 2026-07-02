@@ -46,6 +46,7 @@ class FakePub:
         self.reports = []
         self.resolved = []
         self.notifications = []
+        self.other_faces = []
 
     def publish_reply(self, env):
         self.replies.append(env)
@@ -58,6 +59,9 @@ class FakePub:
 
     def publish_notification(self, env):
         self.notifications.append(env)
+
+    def publish_other_faces_resolved(self, env):
+        self.other_faces.append(env)
 
 
 class Log:
@@ -73,7 +77,8 @@ def _svc(llm, store=None, embedder=None, cfg=None):
     svc = ChatbotService(cfg or ChatbotConfig(producer="chatbot-gateway"),
                          FakeCipher(), llm, pub, pub, log,
                          conversations=store or MemoryConversationStore(),
-                         embedder=embedder or FakeEmbedder(), resolved_pub=pub, notification_pub=pub)
+                         embedder=embedder or FakeEmbedder(), resolved_pub=pub, notification_pub=pub,
+                         other_faces_pub=pub)
     return svc, pub, log
 
 
@@ -335,6 +340,19 @@ def test_closing_summary_no_especificado_when_profile_empty():
     assert pl["kind"] == "image" and "no especificado" in pl["jwe_body"]
 
 
+def test_closing_uses_event_summary_when_profile_empty():
+    """Reporte derivado (ADR-0021): el perfil de sesión está vacío, pero el cierre usa los datos REALES
+    que llegan en entity.enrolled (nombre/doc/ubicación)."""
+    env = _enrolled_env(media_ref="vault://m/crop")
+    env["payload"].update({"subject_name": "Eleysa Cartaya", "id_type": "cedula",
+                           "id_number": "18336255", "location": "Catia"})
+    svc, pub, _ = _svc(FakeLlm(), store=MemoryConversationStore())
+    svc.on_entity_enrolled(env)
+    cap = pub.replies[0]["payload"]["jwe_body"]
+    assert "Eleysa Cartaya" in cap and "cedula 18336255" in cap and "Catia" in cap
+    assert "no especificado" not in cap.split("Información adicional")[0]  # nombre/doc/ubicación presentes
+
+
 def test_location_in_report_received_payload():
     draft = ReportDraft(intention="desaparecido", subject_name="Ana", id_type="V", id_number="9",
                         location="Valencia", complete=True)
@@ -417,6 +435,94 @@ def test_disambiguation_invalid_reprompts_and_keeps_state():
     assert pub.resolved == []                           # no resuelve con respuesta inválida
     ctx = store.load(conversation_key("bot-1", "whatsapp", "584120000000"), [], recent_n=0, top_k=0)
     assert ctx.profile.pending_disambiguation_id == "dis_1"   # sigue pendiente
+
+
+# --- reporte derivado de otros rostros (ADR-0021 RF-21) ---
+
+def _other_faces_env(contact="584120000000", n=2):
+    faces = [{"index": i, "crop_ref": f"s3://b/crop/{i}"} for i in range(n)]
+    return {"event_id": "evt-ofr", "event_type": "other.faces.requested",
+            "payload": {"disambiguation_id": "dis_1", "origin_report_id": "rep_1",
+                        "origin_entity_id": "ent_1", "bot_id": "bot-1", "channel": "whatsapp",
+                        "contact_ref": contact, "faces": faces}}
+
+
+def test_other_faces_requested_prompts_and_sets_state():
+    store = MemoryConversationStore()
+    svc, pub, _ = _svc(FakeLlm(), store=store)
+    res = svc.on_other_faces_requested(_other_faces_env(n=2))
+    assert res.outcome is Outcome.REPLIED
+    pl = pub.replies[0]["payload"]
+    assert pl["media_refs"] == ["s3://b/crop/0", "s3://b/crop/1"]
+    assert [n["payload"]["purpose"] for n in pub.notifications] == ["other_faces"]
+    ctx = store.load(conversation_key("bot-1", "whatsapp", "584120000000"), [], recent_n=0, top_k=0)
+    assert ctx.profile.derived_flow["step"] == "select"
+
+
+def test_other_faces_none_purges_and_clears():
+    store = MemoryConversationStore()
+    svc, pub, _ = _svc(FakeLlm(), store=store)
+    svc.on_other_faces_requested(_other_faces_env(n=2))
+    svc.handle(_env({"kind": "text", "text": "ninguno"}))
+    assert pub.other_faces[0]["payload"] == {"disambiguation_id": "dis_1", "confirmed_indices": []}
+    ctx = store.load(conversation_key("bot-1", "whatsapp", "584120000000"), [], recent_n=0, top_k=0)
+    assert ctx.profile.derived_flow is None
+    assert llm_not_called(svc)
+
+
+def llm_not_called(svc):
+    return svc._llm.calls == []
+
+
+def test_derived_report_full_capture_promotes_crop():
+    """select → consent(sí) → nombre → tipo → número emite report.received con media_ref+procedencia."""
+    store = MemoryConversationStore()
+    llm = FakeLlm()
+    svc, pub, _ = _svc(llm, store=store)
+    svc.on_other_faces_requested(_other_faces_env(n=2))
+    svc.handle(_env({"kind": "text", "text": "1"}))          # confirma el rostro mostrado #1 (índice 0)
+    assert pub.other_faces[0]["payload"]["confirmed_indices"] == [0]
+    svc.handle(_env({"kind": "text", "text": "sí, tengo el consentimiento"}))   # consent
+    assert [n["payload"]["purpose"] for n in pub.notifications] == ["other_faces", "derived_consent"]
+    svc.handle(_env({"kind": "text", "text": "Ana Pérez"}))    # nombre
+    svc.handle(_env({"kind": "text", "text": "cédula"}))       # tipo
+    r = svc.handle(_env({"kind": "text", "text": "V-987"}))    # número → promueve
+    assert r.outcome is Outcome.REPLIED_WITH_REPORT
+    rep = pub.reports[-1]["payload"]
+    assert rep["subject_name"] == "Ana Pérez" and rep["id_type"] == "cédula" and rep["id_number"] == "V-987"
+    assert rep["media_ref"] == "s3://b/crop/0"
+    assert rep["origin_report_id"] == "rep_1" and rep["origin_entity_id"] == "ent_1"
+    assert llm.calls == []                                      # todo el flujo es determinístico
+    ctx = store.load(conversation_key("bot-1", "whatsapp", "584120000000"), [], recent_n=0, top_k=0)
+    assert ctx.profile.derived_flow is None                    # cola vacía → flujo cerrado
+
+
+def test_derived_queue_two_confirmed_emits_two_reports():
+    store = MemoryConversationStore()
+    svc, pub, _ = _svc(FakeLlm(), store=store)
+    svc.on_other_faces_requested(_other_faces_env(n=2))
+    svc.handle(_env({"kind": "text", "text": "1 y 2"}))        # confirma ambos
+    assert pub.other_faces[0]["payload"]["confirmed_indices"] == [0, 1]
+    # persona 1
+    for t in ["sí", "Ana", "cédula", "V-1"]:
+        svc.handle(_env({"kind": "text", "text": t}))
+    # persona 2 (arranca su propio consentimiento)
+    for t in ["sí", "Beto", "cédula", "V-2"]:
+        svc.handle(_env({"kind": "text", "text": t}))
+    names = [r["payload"]["subject_name"] for r in pub.reports]
+    refs = [r["payload"]["media_ref"] for r in pub.reports]
+    assert names == ["Ana", "Beto"] and refs == ["s3://b/crop/0", "s3://b/crop/1"]
+
+
+def test_derived_consent_no_skips_person():
+    store = MemoryConversationStore()
+    svc, pub, _ = _svc(FakeLlm(), store=store)
+    svc.on_other_faces_requested(_other_faces_env(n=2))
+    svc.handle(_env({"kind": "text", "text": "1"}))            # confirma uno
+    svc.handle(_env({"kind": "text", "text": "no"}))           # niega consentimiento → no captura
+    assert pub.reports == []
+    ctx = store.load(conversation_key("bot-1", "whatsapp", "584120000000"), [], recent_n=0, top_k=0)
+    assert ctx.profile.derived_flow is None                    # cola vacía → cerrado
 
 
 def test_separate_contacts_have_isolated_context():

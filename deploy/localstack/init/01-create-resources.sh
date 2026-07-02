@@ -76,12 +76,16 @@ FANOUT_QUEUES=(
   face-disambiguation-resolved   # matching-worker (enrola el rostro elegido)
   enrollment-failed              # chatbot-gateway (pide otra foto)
   entity-enrolled                # re-matching / auditoría (consumidor futuro)
+  # Reporte derivado de otros rostros (ADR-0021)
+  other-faces-requested          # chatbot-gateway (pregunta por los otros rostros)
+  other-faces-resolved           # matching-worker (purga los no confirmados)
 )
 
 # 3) Topics SNS (catálogo canónico del ADR-0011/0016).
 TOPICS=(media-stored report-ingested candidate-generated match-confirmed match-resolved
         state-changed notification-sent
-        entity-enrolled enrollment-failed face-disambiguation-requested face-disambiguation-resolved)
+        entity-enrolled enrollment-failed face-disambiguation-requested face-disambiguation-resolved
+        other-faces-requested)   # ADR-0021: matching-worker publica → chatbot (fan-out)
 
 # 4) Pares "topic queue" de suscripción SNS -> SQS.
 SUBSCRIPTIONS=(
@@ -98,6 +102,7 @@ SUBSCRIPTIONS=(
   "face-disambiguation-resolved face-disambiguation-resolved"
   "enrollment-failed enrollment-failed"
   "entity-enrolled entity-enrolled"
+  "other-faces-requested other-faces-requested"   # ADR-0021 → chatbot-gateway
 )
 
 for q in "${DIRECT_QUEUES[@]}" "${FANOUT_QUEUES[@]}"; do
